@@ -15,10 +15,10 @@ export default function Navbar() {
     navigate("/");
   };
   const avatarOf = (name?: string, url?: string) => {
-    if (url) return url;
-    const text = encodeURIComponent(name || "U");
-    return `https://ui-avatars.com/api/?name=${text}&background=0D8ABC&color=fff&size=64&rounded=true`;
-  };
+  if (url) return url;
+  const text = encodeURIComponent(name || "U");
+  return `https://ui-avatars.com/api/?name=${text}&background=0D8ABC&color=fff&size=64&rounded=true`;
+};
 
   const navItems = [
     { name: "Home", href: "/", icon: Home },
@@ -61,15 +61,15 @@ export default function Navbar() {
                   onClick={() => setIsUserMenuOpen((v) => !v)}
                   className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors duration-200"
                 >
-                  <img
-                    src={avatarOf(user?.name, user?.avatar || undefined)}
-                    onError={(e) => {
-                      // nếu link mạng lỗi thì fallback ngay lập tức
-                      (e.currentTarget as HTMLImageElement).src = avatarOf(user?.name);
-                    }}
-                    alt={user?.name || "User"}
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
+                 <img
+  src={avatarOf(user?.name, user?.avatar || undefined)}
+  onError={(e) => {
+    // nếu link mạng lỗi thì fallback ngay lập tức
+    (e.currentTarget as HTMLImageElement).src = avatarOf(user?.name);
+  }}
+  alt={user?.name || "User"}
+  className="h-8 w-8 rounded-full object-cover"
+/>
                   <span className="font-medium">{user?.name || "User"}</span>
                 </button>
 

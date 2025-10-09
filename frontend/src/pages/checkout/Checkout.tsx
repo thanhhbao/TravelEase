@@ -74,6 +74,7 @@ export default function Checkout() {
 
           {step === 1 && (
             <div className="mt-8 space-y-8">
+              {/* Contact Detail */}
               <Section title="Contact Detail">
                 <div className="grid md:grid-cols-2 gap-4">
                   <Input label="Email" placeholder="input email" type="email" />
