@@ -12,6 +12,7 @@ export default function AuthPage() {
   const [searchParams] = useSearchParams();
   const { login, register } = useAuthStore();
 
+  // /register => "register", còn lại => "login"
   const urlMode: Mode = useMemo(
     () => (location.pathname.includes("register") ? "register" : "login"),
     [location.pathname]
@@ -52,11 +53,6 @@ export default function AuthPage() {
       } else {
         if (form.password !== form.password_confirmation) {
           setErr("Password confirmation does not match.");
-          return;
-        }
-
-        if (form.password.length < 8) {
-          setErr("Password must be at least 8 characters.");
           return;
         }
         await register(form.name, email, form.password);

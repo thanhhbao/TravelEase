@@ -68,30 +68,18 @@ export const register = async (payload: {
   password: string;
   password_confirmation: string;
 }) => {
-  try {
-    const { data } = await api.post("/api/register", payload);
-    if (data?.token) setAuthToken(data.token);
-    return data;
-  } catch (err: unknown) {
-    // Log full backend response body to help debugging (temporary)
-    // eslint-disable-next-line no-console
-    console.error('API register error:', (err as any)?.response?.data ?? err);
-    throw err;
-  }
+  const { data } = await api.post("/api/register", payload);
+
+  if (data?.token) setAuthToken(data.token);
+  return data;
 };
 
 /** Đăng nhập -> backend trả { user, token } */
 export const login = async (payload: { email: string; password: string }) => {
-  try {
-    const { data } = await api.post("/api/login", payload);
-    if (data?.token) setAuthToken(data.token);
-    return data;
-  } catch (err: unknown) {
-    // Log full backend response body to help debugging (temporary)
-    // eslint-disable-next-line no-console
-    console.error('API login error:', (err as any)?.response?.data ?? err);
-    throw err;
-  }
+  const { data } = await api.post("/api/login", payload);
+
+  if (data?.token) setAuthToken(data.token);
+  return data;
 };
 
 /** Đăng xuất: best-effort; luôn xoá token local */
