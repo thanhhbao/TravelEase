@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "hotelId": 1,
+    "roomId": 101,
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-23",
+    "guests": 2,
+    "totalPrice": 897,
+    "status": "confirmed",
+    "createdAt": "2024-12-01T10:30:00Z",
+    "hotel": {
+      "name": "Grand Plaza Hotel",
+      "city": "New York",
+      "country": "United States"
+    },
+    "room": {
+      "name": "Deluxe King Room"
+    }
+  },
+  {
+    "id": 2,
+    "userId": 1,
+    "hotelId": 2,
+    "roomId": 201,
+    "checkIn": "2024-12-25",
+    "checkOut": "2024-12-28",
+    "guests": 4,
+    "totalPrice": 567,
+    "status": "pending",
+    "createdAt": "2024-12-05T14:20:00Z",
+    "hotel": {
+      "name": "Ocean Breeze Resort",
+      "city": "Miami",
+      "country": "United States"
+    },
+    "room": {
+      "name": "Ocean View Room"
+    }
+  }
+]
+
+
