@@ -89,11 +89,25 @@ export const useAuthStore = create<AuthState>()(
 
       /* Logout */
       logout: async () => {
+        set({ user: null, isAuthenticated: false, isBootstrapping: false });
+
+        const token = getAuthToken();
+        if (!token) {
+          setAuthToken(null);
+          return;
+        }
+
         try {
           await apiLogout();
+        } catch (error) {
+          if (
+            axios.isAxiosError(error) &&
+            error.response?.status !== 401
+          ) {
+            console.error("Failed to call logout endpoint", error);
+          }
         } finally {
           setAuthToken(null);
-          set({ user: null, isAuthenticated: false });
         }
       },
 

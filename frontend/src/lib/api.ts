@@ -27,16 +27,15 @@ const readStoredToken = () => (storage ? storage.getItem(TOKEN_KEY) : null);
 
 export function setAuthToken(token: string | null) {
   authToken = token;
-  if (!storage) return;
 
   if (token) {
-    storage.setItem(TOKEN_KEY, token);
+    if (storage) storage.setItem(TOKEN_KEY, token);
     (api.defaults.headers as AxiosHeaders).set(
       "Authorization",
       `Bearer ${token}`
     );
   } else {
-    storage.removeItem(TOKEN_KEY);
+    if (storage) storage.removeItem(TOKEN_KEY);
     (api.defaults.headers as AxiosHeaders).delete("Authorization");
   }
 }
