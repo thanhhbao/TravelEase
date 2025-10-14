@@ -1,5 +1,5 @@
 // src/lib/api.ts
-import axios, { AxiosHeaders, AxiosError } from "axios";
+import axios, { AxiosError, AxiosHeaders } from "axios";
 
 /** -------- Base URL -------- */
 export const API_BASE_URL =
@@ -18,18 +18,32 @@ export const api = axios.create({
 
 /** -------- Token helpers -------- */
 const TOKEN_KEY = "auth_token";
-let authToken: string | null = localStorage.getItem(TOKEN_KEY) || null;
+const hasWindow = typeof window !== "undefined";
+const storage = hasWindow ? window.localStorage : null;
+
+let authToken: string | null = null;
+
+const readStoredToken = () => (storage ? storage.getItem(TOKEN_KEY) : null);
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  if (!storage) return;
+
   if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
+    storage.setItem(TOKEN_KEY, token);
+    (api.defaults.headers as AxiosHeaders).set(
+      "Authorization",
+      `Bearer ${token}`
+    );
   } else {
-    localStorage.removeItem(TOKEN_KEY);
+    storage.removeItem(TOKEN_KEY);
+    (api.defaults.headers as AxiosHeaders).delete("Authorization");
   }
 }
 
 export function getAuthToken() {
+  if (authToken) return authToken;
+  authToken = readStoredToken();
   return authToken;
 }
 
@@ -112,7 +126,7 @@ export const resendEmailVerification = () =>
 (() => {
   const token = getAuthToken();
   if (token) {
-    (api.defaults.headers as unknown as AxiosHeaders).set(
+    (api.defaults.headers as AxiosHeaders).set(
       "Authorization",
       `Bearer ${token}`
     );
