@@ -1,0 +1,59 @@
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "flightId": 1,
+    "passengers": [
+      {
+        "name": "John Doe",
+        "dateOfBirth": "1985-06-15",
+        "passportNumber": "AB1234567"
+      }
+    ],
+    "contactEmail": "john.doe@email.com",
+    "contactPhone": "+1-555-0123",
+    "totalPrice": 299,
+    "status": "confirmed",
+    "createdAt": "2024-12-01T09:15:00Z",
+    "flight": {
+      "airline": "American Airlines",
+      "flightNumber": "AA1234",
+      "fromAirport": "JFK",
+      "toAirport": "LAX",
+      "departureTime": "2024-12-15T08:30:00Z",
+      "arrivalTime": "2024-12-15T11:45:00Z"
+    }
+  },
+  {
+    "id": 2,
+    "userId": 1,
+    "flightId": 5,
+    "passengers": [
+      {
+        "name": "John Doe",
+        "dateOfBirth": "1985-06-15",
+        "passportNumber": "AB1234567"
+      },
+      {
+        "name": "Jane Doe",
+        "dateOfBirth": "1987-03-22",
+        "passportNumber": "CD7890123"
+      }
+    ],
+    "contactEmail": "john.doe@email.com",
+    "contactPhone": "+1-555-0123",
+    "totalPrice": 378,
+    "status": "pending",
+    "createdAt": "2024-12-03T16:45:00Z",
+    "flight": {
+      "airline": "Southwest Airlines",
+      "flightNumber": "WN3456",
+      "fromAirport": "LGA",
+      "toAirport": "MIA",
+      "departureTime": "2024-12-15T10:30:00Z",
+      "arrivalTime": "2024-12-15T13:45:00Z"
+    }
+  }
+]
+
+
