@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, User, LogOut, Calendar, Plane, Home } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
 
@@ -8,6 +8,7 @@ export default function Navbar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const handleLogout = () => {
     logout();
@@ -15,10 +16,10 @@ export default function Navbar() {
     navigate("/");
   };
   const avatarOf = (name?: string, url?: string) => {
-    if (url) return url;
-    const text = encodeURIComponent(name || "U");
-    return `https://ui-avatars.com/api/?name=${text}&background=0D8ABC&color=fff&size=64&rounded=true`;
-  };
+  if (url) return url;
+  const text = encodeURIComponent(name || "U");
+  return `https://ui-avatars.com/api/?name=${text}&background=0D8ABC&color=fff&size=64&rounded=true`;
+};
 
   const navItems = [
     { name: "Home", href: "/", icon: Home },
@@ -34,23 +35,42 @@ export default function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3 group">
             <div className="relative">
-              <Plane className="h-10 w-10 text-gray-900 group-hover:text-gray-700 transition-colors duration-300" />
+              <Plane className="h-10 w-10" />
             </div>
-            <span className="text-3xl font-bold tracking-tight text-gray-900">TravelEase</span>
+            <span className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-cyan-800">
+              TravelEase
+            </span>
           </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            {navItems.map((item) => (
-              <Link
-                key={item.name}
-                to={item.href}
-                className="text-gray-700 hover:text-gray-900 transition-colors duration-200 font-medium relative group"
-              >
-                {item.name}
-                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-900 transition-all duration-300 group-hover:w-full"></span>
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const active =
+                pathname === item.href || pathname.startsWith(item.href + "/");
+              return (
+                <Link
+                  key={item.name}
+                  to={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`relative font-medium transition-colors duration-200 group
+                    ${
+                      active
+                        ? "text-sky-700" // màu chữ khi active
+                        : "text-gray-700 hover:text-gray-900"
+                    }`}
+                >
+                  {item.name}
+                  <span
+                    className={`absolute -bottom-1 left-0 h-0.5 transition-all duration-300
+                      ${
+                        active
+                          ? "w-full bg-sky-600" // underline khi active (xanh dương)
+                          : "w-0 bg-gray-900 group-hover:w-full"
+                      }`}
+                  />
+                </Link>
+              );
+            })}
           </div>
 
           {/* Desktop Auth Section */}
@@ -61,15 +81,15 @@ export default function Navbar() {
                   onClick={() => setIsUserMenuOpen((v) => !v)}
                   className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors duration-200"
                 >
-                  <img
-                    src={avatarOf(user?.name, user?.avatar || undefined)}
-                    onError={(e) => {
-                      // nếu link mạng lỗi thì fallback ngay lập tức
-                      (e.currentTarget as HTMLImageElement).src = avatarOf(user?.name);
-                    }}
-                    alt={user?.name || "User"}
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
+                 <img
+  src={avatarOf(user?.name, user?.avatar || undefined)}
+  onError={(e) => {
+    // nếu link mạng lỗi thì fallback ngay lập tức
+    (e.currentTarget as HTMLImageElement).src = avatarOf(user?.name);
+  }}
+  alt={user?.name || "User"}
+  className="h-8 w-8 rounded-full object-cover"
+/>
                   <span className="font-medium">{user?.name || "User"}</span>
                 </button>
 
@@ -113,7 +133,7 @@ export default function Navbar() {
             ) : (
               <Link
                 to="/login"
-                className="inline-flex items-center justify-center rounded-full bg-gray-900 text-white px-5 py-2 font-medium hover:bg-gray-800 transition"
+                className="btn-primary rounded-full"
               >
                 Sign in
               </Link>

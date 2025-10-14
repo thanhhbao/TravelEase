@@ -86,6 +86,8 @@ const mockFlights: Flight[] = [
   },
 ];
 
+const PAGE_SIZE = 10;
+
 /* ===================== Component ===================== */
 export default function Flights() {
   /* ---- core state ---- */
@@ -93,6 +95,7 @@ export default function Flights() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [expandedFlight, setExpandedFlight] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortKey>("cheapest");
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   /* ---- search params ---- */
   const [fromCity, setFromCity] = useState<string>("Soekarno Hatta Airport — CGK");
@@ -185,6 +188,27 @@ useEffect(() => {
         }),
     [flights, budgetRange, sortBy]
   );
+
+  const totalFlights = visibleFlights.length;
+  const totalPages = Math.max(1, Math.ceil(totalFlights / PAGE_SIZE));
+
+  const paginatedFlights = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return visibleFlights.slice(start, start + PAGE_SIZE);
+  }, [visibleFlights, currentPage]);
+
+  const startFlightIndex = totalFlights === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endFlightIndex = Math.min(currentPage * PAGE_SIZE, totalFlights);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [flights, budgetRange, sortBy]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   /* ===================== UI ===================== */
   return (
@@ -410,8 +434,8 @@ useEffect(() => {
             {/* Header */}
             <div className="bg-white rounded-2xl border border-gray-200 px-4 md:px-6 py-3 mb-4 flex items-center justify-between">
               <div className="text-sm md:text-base text-gray-700">
-                Result • <span className="font-semibold">{visibleFlights.length}</span>{" "}
-                flights found
+                Result • <span className="font-semibold">{totalFlights}</span> flights
+                found
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-gray-600 text-sm hidden md:block">Sort:</span>
@@ -435,7 +459,7 @@ useEffect(() => {
               </div>
             ) : visibleFlights.length > 0 ? (
               <div className="space-y-5">
-                {visibleFlights.map((flight) => (
+                {paginatedFlights.map((flight) => (
                   <div
                     key={flight.id}
                     className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
@@ -566,6 +590,36 @@ useEffect(() => {
                     </div>
                   </div>
                 ))}
+                {totalFlights > 0 && (
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pt-2">
+                    <div className="text-sm text-gray-600">
+                      Showing {startFlightIndex}-{endFlightIndex} of {totalFlights} flights
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                          disabled={currentPage === 1}
+                          className="h-10 px-4 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 disabled:text-gray-400 disabled:border-gray-100 hover:bg-gray-50 transition-colors"
+                        >
+                          Previous
+                        </button>
+                        <span className="text-sm text-gray-700">
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setCurrentPage((page) => Math.min(totalPages, page + 1))
+                          }
+                          disabled={currentPage === totalPages}
+                          className="h-10 px-4 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 disabled:text-gray-400 disabled:border-gray-100 hover:bg-gray-50 transition-colors"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-200">

@@ -31,16 +31,6 @@ Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
 Route::post('/reset-password', [NewPasswordController::class, 'store'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
-// Temporary debug endpoint to echo request body/headers (only in local)
-if (env('APP_ENV') === 'local') {
-    Route::post('/debug/echo', function (\Illuminate\Http\Request $r) {
-        return response()->json([
-            'body' => $r->all(),
-            'headers' => $r->headers->all(),
-        ]);
-    })->withoutMiddleware([VerifyCsrfToken::class]);
-}
-
 // ===== Gửi email verify (cần Bearer token) =====
 Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
     ->middleware(['auth:sanctum', 'throttle:6,1'])
