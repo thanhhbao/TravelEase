@@ -1,4 +1,5 @@
 // src/store/auth.ts
+import axios from "axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -9,6 +10,7 @@ import {
   forgotPassword as apiForgotPassword,
   resetPassword as apiResetPassword,
   resendEmailVerification as apiResendVerify,
+  getAuthToken,
   setAuthToken,
 } from "../lib/api";
 
@@ -49,12 +51,22 @@ export const useAuthStore = create<AuthState>()(
 
       /* Load user bằng token khi app mở */
       bootstrap: async () => {
+        const token = getAuthToken();
+        if (!token) {
+          set({ isBootstrapping: false });
+          return;
+        }
+
         try {
           const { data } = await me();
           set({ user: data as User, isAuthenticated: true, isBootstrapping: false });
-        } catch {
-          setAuthToken(null);
-          set({ user: null, isAuthenticated: false, isBootstrapping: false });
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 401) {
+            setAuthToken(null);
+            set({ user: null, isAuthenticated: false, isBootstrapping: false });
+          } else {
+            set({ isBootstrapping: false });
+          }
         }
       },
 
