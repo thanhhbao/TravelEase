@@ -10,6 +10,7 @@ export type Room = {
 };
 
 export type Hotel = {
+  amenities: any;
   id: number;
   slug: string;
   name: string;
