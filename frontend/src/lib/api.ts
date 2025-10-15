@@ -5,7 +5,7 @@ import axios, { AxiosHeaders, AxiosError } from "axios";
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-/** -------- Axios instance (Bearer token) -------- */
+/** -------- Axios instance -------- */
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: new AxiosHeaders({
@@ -13,19 +13,20 @@ export const api = axios.create({
     Accept: "application/json",
     "Content-Type": "application/json",
   }),
-  // withCredentials: false  // KHÔNG dùng cookie, ta dùng Bearer token
 });
 
-/** -------- Token helpers -------- */
 const TOKEN_KEY = "auth_token";
-let authToken: string | null = localStorage.getItem(TOKEN_KEY) || null;
+let authToken: string | null = null;
 
+/** -------- Token helpers -------- */
 export function setAuthToken(token: string | null) {
   authToken = token;
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
+    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    delete api.defaults.headers.common["Authorization"];
   }
 }
 
@@ -33,17 +34,16 @@ export function getAuthToken() {
   return authToken;
 }
 
-/** Gắn Authorization trước mỗi request */
+/** -------- Interceptors -------- */
 api.interceptors.request.use((cfg) => {
-  const token = getAuthToken();
+  const token = getAuthToken() || localStorage.getItem(TOKEN_KEY);
   if (token) {
-    if (!cfg.headers) cfg.headers = new AxiosHeaders();
-    (cfg.headers as AxiosHeaders).set("Authorization", `Bearer ${token}`);
+    cfg.headers = cfg.headers || {};
+    (cfg.headers as any).Authorization = `Bearer ${token}`;
   }
   return cfg;
 });
 
-/** Nếu 401 → xoá token phía client để FE chuyển về login */
 api.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
@@ -54,14 +54,9 @@ api.interceptors.response.use(
   }
 );
 
-/* =====================================================
- * ================ AUTH (token-based) =================
- * ===================================================== */
-
-/** Lấy user hiện tại (cần Bearer token) */
+/** -------- API AUTH -------- */
 export const me = () => api.get("/api/user");
 
-/** Đăng ký -> backend trả { user, token } */
 export const register = async (payload: {
   name: string;
   email: string;
@@ -69,20 +64,16 @@ export const register = async (payload: {
   password_confirmation: string;
 }) => {
   const { data } = await api.post("/api/register", payload);
-
   if (data?.token) setAuthToken(data.token);
   return data;
 };
 
-/** Đăng nhập -> backend trả { user, token } */
 export const login = async (payload: { email: string; password: string }) => {
   const { data } = await api.post("/api/login", payload);
-
   if (data?.token) setAuthToken(data.token);
   return data;
 };
 
-/** Đăng xuất: best-effort; luôn xoá token local */
 export const logout = async () => {
   try {
     await api.post("/api/logout");
@@ -90,10 +81,6 @@ export const logout = async () => {
     setAuthToken(null);
   }
 };
-
-/* =====================================================
- * ======= Password reset & Email verification =========
- * ===================================================== */
 
 export const forgotPassword = (email: string) =>
   api.post("/api/forgot-password", { email });
@@ -108,13 +95,15 @@ export const resetPassword = (payload: {
 export const resendEmailVerification = () =>
   api.post("/api/email/verification-notification");
 
-/** Khởi động: nếu trong localStorage đã có token thì gắn vào header ngay */
+/** -------- Init on app load -------- */
 (() => {
-  const token = getAuthToken();
-  if (token) {
-    (api.defaults.headers as unknown as AxiosHeaders).set(
-      "Authorization",
-      `Bearer ${token}`
-    );
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      authToken = token;
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }
+  } catch (e) {
+    console.warn("Init token error", e);
   }
 })();

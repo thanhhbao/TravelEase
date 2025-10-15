@@ -23,76 +23,74 @@ export interface User {
 
 type AuthState = {
   user: User | null;
+  token: string | null;
   isAuthenticated: boolean;
   isBootstrapping: boolean;
 
   bootstrap: () => Promise<void>;
-  logout: () => Promise<void>;
-
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 
   updateProfile: (updates: Partial<User>) => Promise<void>;
-
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (p: { email: string; token: string; password: string }) => Promise<void>;
   resendEmailVerification: () => Promise<void>;
 };
 
-
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
+      token: null,
       isAuthenticated: false,
       isBootstrapping: true,
 
-      /* Load user bằng token khi app mở */
       bootstrap: async () => {
         try {
-          const { data } = await me();
-          set({ user: data as User, isAuthenticated: true, isBootstrapping: false });
+          const token = localStorage.getItem("auth_token");
+          if (token) {
+            setAuthToken(token);
+            const { data } = await me();
+            set({ user: data as User, token, isAuthenticated: true, isBootstrapping: false });
+          } else {
+            set({ isBootstrapping: false });
+          }
         } catch {
           setAuthToken(null);
-          set({ user: null, isAuthenticated: false, isBootstrapping: false });
+          set({ user: null, token: null, isAuthenticated: false, isBootstrapping: false });
         }
       },
 
-      /* Login: backend trả { user, token } */
       login: async (email, password) => {
-        const { user } = await apiLogin({ email, password });
-        set({ user, isAuthenticated: true });
+        const { user, token } = await apiLogin({ email, password });
+        setAuthToken(token);
+        set({ user, token, isAuthenticated: true });
       },
 
-      /* Register: backend trả { user, token } */
       register: async (name, email, password) => {
-        const { user } = await apiRegister({
+        const { user, token } = await apiRegister({
           name,
           email,
           password,
           password_confirmation: password,
         });
-        set({ user, isAuthenticated: true });
+        setAuthToken(token);
+        set({ user, token, isAuthenticated: true });
       },
 
-      /* Logout */
       logout: async () => {
-        try {
-          await apiLogout();
-        } finally {
-          setAuthToken(null);
-          set({ user: null, isAuthenticated: false });
-        }
+        await apiLogout();
+        setAuthToken(null);
+        set({ user: null, token: null, isAuthenticated: false });
       },
 
-      /* Update profile (local) */
       updateProfile: async (updates) => {
         const { user } = get();
         if (!user) return;
         set({ user: { ...user, ...updates } });
       },
 
-      /* Forgot / Reset / Resend verify */
       forgotPassword: async (email) => {
         await apiForgotPassword(email);
       },
@@ -112,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
       name: "auth-storage",
       partialize: (s) => ({
         user: s.user,
+        token: s.token,
         isAuthenticated: s.isAuthenticated,
       }),
     }

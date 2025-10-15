@@ -24,7 +24,8 @@ function App() {
   const { bootstrap, isBootstrapping } = useAuthStore();
 
   useEffect(() => {
-    bootstrap(); // gọi /api/user để khôi phục phiên đăng nhập (nếu có)
+    // bootstrap will call /api/user to restore session; token (if any) already set in main.tsx
+    bootstrap();
   }, [bootstrap]);
 
   if (isBootstrapping) {

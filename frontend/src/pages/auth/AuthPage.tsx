@@ -55,6 +55,11 @@ export default function AuthPage() {
           setErr("Password confirmation does not match.");
           return;
         }
+        // Client-side minimum password length check to avoid backend 422
+        if (form.password.length < 8) {
+          setErr("Password must be at least 8 characters.");
+          return;
+        }
         await register(form.name, email, form.password);
       }
 
