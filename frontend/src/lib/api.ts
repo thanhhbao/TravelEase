@@ -1,11 +1,8 @@
-// src/lib/api.ts
-import axios, { AxiosHeaders, AxiosError } from "axios";
+import axios, { AxiosError, AxiosHeaders } from "axios";
 
-/** -------- Base URL -------- */
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api";
 
-/** -------- Axios instance -------- */
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: new AxiosHeaders({
@@ -18,7 +15,6 @@ export const api = axios.create({
 const TOKEN_KEY = "auth_token";
 let authToken: string | null = null;
 
-/** -------- Token helpers -------- */
 export function setAuthToken(token: string | null) {
   authToken = token;
   if (token) {
@@ -34,12 +30,11 @@ export function getAuthToken() {
   return authToken;
 }
 
-/** -------- Interceptors -------- */
 api.interceptors.request.use((cfg) => {
   const token = getAuthToken() || localStorage.getItem(TOKEN_KEY);
   if (token) {
-    cfg.headers = cfg.headers || {};
-    (cfg.headers as any).Authorization = `Bearer ${token}`;
+    cfg.headers = cfg.headers || new AxiosHeaders();
+    cfg.headers.set("Authorization", `Bearer ${token}`);
   }
   return cfg;
 });
@@ -49,13 +44,13 @@ api.interceptors.response.use(
   (err: AxiosError) => {
     if (err.response?.status === 401) {
       setAuthToken(null);
+      console.warn("Unauthorized request, token cleared");
     }
     return Promise.reject(err);
   }
 );
 
-/** -------- API AUTH -------- */
-export const me = () => api.get("/api/user");
+export const me = () => api.get("/user");
 
 export const register = async (payload: {
   name: string;
@@ -63,39 +58,38 @@ export const register = async (payload: {
   password: string;
   password_confirmation: string;
 }) => {
-  const { data } = await api.post("/api/register", payload);
+  const { data } = await api.post("/register", payload);
   if (data?.token) setAuthToken(data.token);
   return data;
 };
 
 export const login = async (payload: { email: string; password: string }) => {
-  const { data } = await api.post("/api/login", payload);
+  const { data } = await api.post("/login", payload);
   if (data?.token) setAuthToken(data.token);
   return data;
 };
 
 export const logout = async () => {
   try {
-    await api.post("/api/logout");
+    await api.post("/logout");
   } finally {
     setAuthToken(null);
   }
 };
 
 export const forgotPassword = (email: string) =>
-  api.post("/api/forgot-password", { email });
+  api.post("/forgot-password", { email });
 
 export const resetPassword = (payload: {
   token: string;
   email: string;
   password: string;
   password_confirmation: string;
-}) => api.post("/api/reset-password", payload);
+}) => api.post("/reset-password", payload);
 
 export const resendEmailVerification = () =>
-  api.post("/api/email/verification-notification");
+  api.post("/email/verification-notification");
 
-/** -------- Init on app load -------- */
 (() => {
   try {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -107,3 +101,5 @@ export const resendEmailVerification = () =>
     console.warn("Init token error", e);
   }
 })();
+
+export default api;

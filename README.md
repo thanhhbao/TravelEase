@@ -1,2 +1,2 @@
 FE: npm run dev
-BE: php artisan serve --host=localhost --port=8000
+BE: php artisan serve --host=127.0.0.1 --port=8000

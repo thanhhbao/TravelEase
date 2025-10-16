@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\UserController;
 
 // ===============================
 // 🔐 AUTHENTICATION API (Stateless)
@@ -18,6 +19,10 @@ use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return response()->json($request->user());
 });
+
+// ✅ Cập nhật thông tin user
+Route::middleware('auth:sanctum')->put('/user/update', [UserController::class, 'update'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ✅ Đăng ký
 Route::post('/register', [RegisteredUserController::class, 'store'])
