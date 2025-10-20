@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Plane, Calendar, Users, X, Eye } from 'lucide-react';
 import { useAuthStore } from '../../store/auth';
@@ -9,15 +9,9 @@ export default function Tickets() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (user) {
-      loadTickets();
-    }
-  }, [user]);
-
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
     try {
       const ticketData = await ticketsService.getMyTickets(user.id);
@@ -27,13 +21,19 @@ export default function Tickets() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadTickets();
+    }
+  }, [user, loadTickets]);
 
   const handleCancelTicket = async (ticketId: number) => {
     if (window.confirm('Are you sure you want to cancel this ticket?')) {
       try {
         await ticketsService.cancelTicket(ticketId);
-        loadTickets(); // Reload tickets
+        await loadTickets(); // Reload tickets
       } catch (error) {
         console.error('Failed to cancel ticket:', error);
       }

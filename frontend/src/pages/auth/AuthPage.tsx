@@ -55,7 +55,11 @@ export default function AuthPage() {
           setErr("Password confirmation does not match.");
           return;
         }
-        await register(form.name, email, form.password);
+        const result = await register(form.name, email, form.password);
+        if (result?.requiresVerification) {
+          navigate(`/verify-email?email=${encodeURIComponent(result.email ?? email)}`, { replace: true });
+          return;
+        }
       }
 
       const redirectTo = searchParams.get("redirect") || "/my/bookings";
@@ -65,16 +69,22 @@ export default function AuthPage() {
 
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
-        const data: any = error.response?.data;
+        const data = error.response?.data as
+          | {
+              message?: string;
+              errors?: Record<string, string[]>;
+            }
+          | undefined;
 
         // Ưu tiên lỗi chi tiết từ backend
         if (status === 401) {
           message = data?.message ?? "Invalid email or password.";
         } else if (status === 422) {
+          const errorMessages = data?.errors
+            ? Object.values(data.errors).flat()
+            : [];
           message =
-            data?.errors?.email?.[0] ||
-            data?.errors?.password?.[0] ||
-            data?.errors?.name?.[0] ||
+            errorMessages[0] ||
             data?.message ||
             "Please check your input and try again.";
         } else if (data?.message) {
@@ -170,6 +180,17 @@ export default function AuthPage() {
               </button>
             </div>
           </div>
+
+          {isLogin && (
+            <div className="text-right">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          )}
 
           {!isLogin && (
             <div>

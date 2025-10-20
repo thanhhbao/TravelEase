@@ -66,7 +66,7 @@ export default function BookingModal({
         onSuccess();
       }
       onClose();
-    } catch (err) {
+    } catch {
       setError('Failed to create booking. Please try again.');
     } finally {
       setIsLoading(false);

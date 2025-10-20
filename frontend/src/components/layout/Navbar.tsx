@@ -169,7 +169,10 @@ export default function Navbar() {
                 <div className="pt-4 border-t border-gray-200">
                   <div className="flex items-center space-x-3 px-4 py-2">
                     <img
-                      src={user?.avatar || "https://via.placeholder.com/64x64.png?text=U"}
+                      src={avatarOf(user?.name, user?.avatar || undefined)}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = avatarOf(user?.name);
+                      }}
                       alt={user?.name || "User"}
                       className="h-10 w-10 rounded-full object-cover"
                     />
