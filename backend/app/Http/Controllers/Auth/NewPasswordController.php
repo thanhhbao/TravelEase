@@ -21,20 +21,34 @@ class NewPasswordController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'token' => ['required'],
+        $data = $request->validate([
+            'code' => ['required_without:token', 'nullable', 'string'],
+            'token' => ['required_without:code', 'nullable', 'string'],
             'email' => ['required', 'email'],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        $token = $data['code'] ?? $data['token'];
+
         // Here we will attempt to reset the user's password. If it is successful we
         // will update the password on an actual user model and persist it to the
         // database. Otherwise we will parse the error and return the response.
+        if (! $token) {
+            throw ValidationException::withMessages([
+                'code' => ['A valid verification code is required.'],
+            ]);
+        }
+
         $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function ($user) use ($request) {
+            [
+                'email' => $data['email'],
+                'password' => $data['password'],
+                'password_confirmation' => $request->input('password_confirmation'),
+                'token' => $token,
+            ],
+            function ($user) use ($data) {
                 $user->forceFill([
-                    'password' => Hash::make($request->string('password')),
+                    'password' => Hash::make($data['password']),
                     'remember_token' => Str::random(60),
                 ])->save();
 

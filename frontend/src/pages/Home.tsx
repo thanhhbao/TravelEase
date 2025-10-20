@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, MapPin, Calendar, User, Star, ArrowRight, Plane, Anchor, Ship, Waves } from "lucide-react";
+import { Search, MapPin, Calendar, User, Star, ArrowRight, Plane, Anchor, Ship } from "lucide-react";
 
 // --- Types ---
 type FeaturedHotel = {
@@ -101,6 +101,11 @@ const ScrollReveal = ({
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    const element = ref.current;
+    if (!element) {
+      return;
+    }
+
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) setIsVisible(true);
@@ -108,9 +113,9 @@ const ScrollReveal = ({
       { threshold: 0.12 }
     );
 
-    if (ref.current) obs.observe(ref.current);
+    obs.observe(element);
     return () => {
-      if (ref.current) obs.unobserve(ref.current);
+      obs.unobserve(element);
     };
   }, []);
 

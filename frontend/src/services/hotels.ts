@@ -10,7 +10,7 @@ export type Room = {
 };
 
 export type Hotel = {
-  amenities: any;
+  amenities?: string[];
   id: number;
   slug: string;
   name: string;
@@ -41,7 +41,7 @@ type ListParams = {
 export async function listHotels(params: ListParams = {}): Promise<HotelFull[]> {
   const res = await fetch("/mock/hotels.json", { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data: HotelFull[] = await res.json();
+  const data = (await res.json()) as HotelFull[];
 
   const { q, city, min, max, stars } = params;
   return data.filter((h) => {

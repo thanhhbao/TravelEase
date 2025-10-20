@@ -4,13 +4,14 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules;
 
 class RegisteredUserController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request, OtpService $otpService)
     {
         $data = $request->validate([
             'name'     => ['required','string','max:255'],
@@ -21,10 +22,13 @@ class RegisteredUserController extends Controller
         // 'password' sẽ tự hash nhờ casts trong User
         $user = User::create($data);
 
-        event(new Registered($user));
+        $otpService->sendEmailVerificationCode($user);
 
-        $token = $user->createToken('web')->plainTextToken;
-
-        return response()->json(['user' => $user, 'token' => $token], 201);
+        return response()->json([
+            'status' => 'verification-required',
+            'message' => 'Verification code sent to your email address.',
+            'requires_email_verification' => true,
+            'email' => $user->email,
+        ], 201);
     }
 }

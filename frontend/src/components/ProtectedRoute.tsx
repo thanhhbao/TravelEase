@@ -21,7 +21,7 @@ export default function ProtectedRoute({ children, requireVerified = false }: Pr
   }
 
   // Chưa đăng nhập => chuyển tới /login và mang theo return url
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

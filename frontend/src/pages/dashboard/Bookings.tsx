@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Users, X, Eye } from 'lucide-react';
 import { useAuthStore } from '../../store/auth';
@@ -9,15 +9,9 @@ export default function Bookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (user) {
-      loadBookings();
-    }
-  }, [user]);
-
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     if (!user) return;
-    
+
     setIsLoading(true);
     try {
       const bookingData = await bookingsService.getMyBookings(user.id);
@@ -27,13 +21,19 @@ export default function Bookings() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadBookings();
+    }
+  }, [user, loadBookings]);
 
   const handleCancelBooking = async (bookingId: number) => {
     if (window.confirm('Are you sure you want to cancel this booking?')) {
       try {
         await bookingsService.cancelBooking(bookingId);
-        loadBookings(); // Reload bookings
+        await loadBookings(); // Reload bookings
       } catch (error) {
         console.error('Failed to cancel booking:', error);
       }

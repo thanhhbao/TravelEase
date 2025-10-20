@@ -96,7 +96,7 @@ export default function TicketModal({
         onSuccess();
       }
       onClose();
-    } catch (err) {
+    } catch {
       setError('Failed to create ticket. Please try again.');
     } finally {
       setIsLoading(false);

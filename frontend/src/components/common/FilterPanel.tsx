@@ -7,6 +7,19 @@ interface FilterOption {
   count?: number;
 }
 
+type RangeValue = {
+  min?: number;
+  max?: number;
+};
+
+type FilterValue =
+  | Array<string | number>
+  | string
+  | number
+  | RangeValue
+  | null
+  | undefined;
+
 interface FilterSection {
   title: string;
   type: 'checkbox' | 'radio' | 'range' | 'select';
@@ -14,8 +27,8 @@ interface FilterSection {
   min?: number;
   max?: number;
   step?: number;
-  value?: any;
-  onChange: (value: any) => void;
+  value?: FilterValue;
+  onChange: (value: FilterValue) => void;
 }
 
 interface FilterPanelProps {
@@ -39,7 +52,7 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
 
   const renderFilterInput = (filter: FilterSection) => {
     switch (filter.type) {
-      case 'checkbox':
+      case 'checkbox': {
         return (
           <div className="space-y-2">
             {filter.options?.map((option) => (
@@ -48,11 +61,16 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
                   type="checkbox"
                   checked={Array.isArray(filter.value) && filter.value.includes(option.value)}
                   onChange={(e) => {
-                    const currentValues = Array.isArray(filter.value) ? filter.value : [];
+                    const currentValues = Array.isArray(filter.value)
+                      ? [...filter.value]
+                      : [];
                     if (e.target.checked) {
                       filter.onChange([...currentValues, option.value]);
                     } else {
-                      filter.onChange(currentValues.filter((v: any) => v !== option.value));
+                      const nextValues = currentValues.filter(
+                        (value) => value !== option.value
+                      );
+                      filter.onChange(nextValues);
                     }
                   }}
                   className="rounded border-gray-300 text-gray-900 focus:ring-gray-900"
@@ -67,6 +85,7 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
             ))}
           </div>
         );
+      }
 
       case 'radio':
         return (
@@ -78,7 +97,7 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
                   name={filter.title}
                   value={option.value}
                   checked={filter.value === option.value}
-                  onChange={(e) => filter.onChange(e.target.value)}
+                  onChange={() => filter.onChange(option.value)}
                   className="border-gray-300 text-gray-900 focus:ring-gray-900"
                 />
                 <span className="text-sm text-gray-700">
@@ -92,7 +111,8 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
           </div>
         );
 
-      case 'range':
+      case 'range': {
+        const rangeValue = (filter.value as RangeValue | undefined) ?? {};
         return (
           <div className="space-y-4">
             <div className="flex items-center space-x-4">
@@ -103,11 +123,15 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
                   min={filter.min}
                   max={filter.max}
                   step={filter.step}
-                  value={filter.value?.min || filter.min}
-                  onChange={(e) => filter.onChange({
-                    ...filter.value,
-                    min: parseInt(e.target.value) || filter.min
-                  })}
+                  value={rangeValue.min ?? filter.min ?? 0}
+                  onChange={(e) =>
+                    filter.onChange({
+                      ...rangeValue,
+                      min: Number.isNaN(parseInt(e.target.value, 10))
+                        ? filter.min
+                        : parseInt(e.target.value, 10),
+                    })
+                  }
                   className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 focus:border-gray-900"
                 />
               </div>
@@ -118,11 +142,15 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
                   min={filter.min}
                   max={filter.max}
                   step={filter.step}
-                  value={filter.value?.max || filter.max}
-                  onChange={(e) => filter.onChange({
-                    ...filter.value,
-                    max: parseInt(e.target.value) || filter.max
-                  })}
+                  value={rangeValue.max ?? filter.max ?? 0}
+                  onChange={(e) =>
+                    filter.onChange({
+                      ...rangeValue,
+                      max: Number.isNaN(parseInt(e.target.value, 10))
+                        ? filter.max
+                        : parseInt(e.target.value, 10),
+                    })
+                  }
                   className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 focus:border-gray-900"
                 />
               </div>
@@ -132,20 +160,23 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
               min={filter.min}
               max={filter.max}
               step={filter.step}
-              value={filter.value?.max || filter.max}
-              onChange={(e) => filter.onChange({
-                ...filter.value,
-                max: parseInt(e.target.value)
-              })}
+              value={rangeValue.max ?? filter.max ?? 0}
+              onChange={(e) =>
+                filter.onChange({
+                  ...rangeValue,
+                  max: parseInt(e.target.value, 10),
+                })
+              }
               className="w-full"
             />
           </div>
         );
+      }
 
       case 'select':
         return (
           <select
-            value={filter.value || ''}
+            value={(filter.value as string | number | undefined) ?? ''}
             onChange={(e) => filter.onChange(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-1 focus:ring-gray-900 focus:border-gray-900"
           >
@@ -206,5 +237,4 @@ export default function FilterPanel({ filters, onClearAll, className = '' }: Fil
     </div>
   );
 }
-
 

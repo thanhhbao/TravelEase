@@ -13,6 +13,9 @@ import Flights from './pages/flights/Flight';
 
 // Dùng 1 component cho cả login & register
 import AuthPage from './pages/auth/AuthPage';
+import VerifyEmail from './pages/auth/VerifyEmail';
+import ForgotPassword from './pages/auth/ForgotPassword';
+import ResetPassword from './pages/auth/ResetPassword';
 
 import DashboardLayout from './pages/dashboard/DashboardLayout';
 import Bookings from './pages/dashboard/Bookings';
@@ -51,6 +54,9 @@ function App() {
             {/* Auth: cùng 1 component, tự nhận biết qua path (/login | /register) */}
             <Route path="/login" element={<AuthPage />} />
             <Route path="/register" element={<AuthPage />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Protected */}
             <Route

@@ -25,18 +25,43 @@ let authToken: string | null = null;
 
 const readStoredToken = () => (storage ? storage.getItem(TOKEN_KEY) : null);
 
+const updateAuthHeader = (headers: unknown, value: string | null) => {
+  if (!headers) return;
+
+  const maybeHeaders = headers as AxiosHeaders & Record<string, unknown> & {
+    delete?: (name: string) => void;
+  };
+
+  if (typeof maybeHeaders.set === "function") {
+    if (value) {
+      maybeHeaders.set("Authorization", value);
+    } else {
+      maybeHeaders.delete?.("Authorization");
+    }
+    return;
+  }
+
+  if (typeof maybeHeaders === "object") {
+    if (value) {
+      (maybeHeaders as Record<string, string>)["Authorization"] = value;
+    } else {
+      delete (maybeHeaders as Record<string, string>)["Authorization"];
+    }
+  }
+};
+
 export function setAuthToken(token: string | null) {
   authToken = token;
 
   if (token) {
     if (storage) storage.setItem(TOKEN_KEY, token);
-    (api.defaults.headers as AxiosHeaders).set(
-      "Authorization",
-      `Bearer ${token}`
-    );
+    const bearer = `Bearer ${token}`;
+    updateAuthHeader(api.defaults.headers, bearer);
+    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, bearer);
   } else {
     if (storage) storage.removeItem(TOKEN_KEY);
-    (api.defaults.headers as AxiosHeaders).delete("Authorization");
+    updateAuthHeader(api.defaults.headers, null);
+    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, null);
   }
 }
 
@@ -50,8 +75,10 @@ export function getAuthToken() {
 api.interceptors.request.use((cfg) => {
   const token = getAuthToken();
   if (token) {
-    if (!cfg.headers) cfg.headers = new AxiosHeaders();
-    (cfg.headers as AxiosHeaders).set("Authorization", `Bearer ${token}`);
+    const bearer = `Bearer ${token}`;
+    const headers = cfg.headers ?? new AxiosHeaders();
+    updateAuthHeader(headers, bearer);
+    cfg.headers = headers;
   }
   return cfg;
 });
@@ -112,7 +139,7 @@ export const forgotPassword = (email: string) =>
   api.post("/api/forgot-password", { email });
 
 export const resetPassword = (payload: {
-  token: string;
+  code: string;
   email: string;
   password: string;
   password_confirmation: string;
@@ -121,13 +148,33 @@ export const resetPassword = (payload: {
 export const resendEmailVerification = () =>
   api.post("/api/email/verification-notification");
 
+export const verifyEmailCode = (payload: { email: string; code: string }) =>
+  api.post("/api/email/verify-code", payload);
+
+export const updateProfileApi = (payload: FormData) =>
+  api.postForm("/api/user/profile?_method=PUT", payload);
+
+export const requestPasswordChangeCode = () =>
+  api.post("/api/user/password/code");
+
+export const changePassword = (payload: {
+  code: string;
+  password: string;
+  password_confirmation: string;
+}) => api.post("/api/user/password", payload);
+
+export const requestAccountDeletionCode = () =>
+  api.post("/api/user/delete/code");
+
+export const deleteAccount = (payload: { code: string }) =>
+  api.post("/api/user/delete", payload);
+
 /** Khởi động: nếu trong localStorage đã có token thì gắn vào header ngay */
 (() => {
   const token = getAuthToken();
   if (token) {
-    (api.defaults.headers as AxiosHeaders).set(
-      "Authorization",
-      `Bearer ${token}`
-    );
+    const bearer = `Bearer ${token}`;
+    updateAuthHeader(api.defaults.headers, bearer);
+    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, bearer);
   }
 })();

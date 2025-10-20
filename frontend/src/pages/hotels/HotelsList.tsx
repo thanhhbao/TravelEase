@@ -34,12 +34,20 @@ export default function HotelsList() {
 
   const itemsPerPage = 9;
 
-  const [filters, setFilters] = useState({
+  type FiltersState = {
+    location: string;
+    minPrice: number;
+    maxPrice: number;
+    stars: number;
+    sortBy: "recommended" | "price-low" | "price-high" | "rating";
+  };
+
+  const [filters, setFilters] = useState<FiltersState>({
     location: (searchParams.get("location") || "").toLowerCase(),
     minPrice: 0,
     maxPrice: 1000,
     stars: 0,
-    sortBy: "recommended" as "recommended" | "price-low" | "price-high" | "rating",
+    sortBy: "recommended",
   });
 
   useEffect(() => {
@@ -90,8 +98,10 @@ export default function HotelsList() {
     setCurrentPage(1);
   }, [hotels, filters]);
 
-  const handleFilterChange = (key: keyof typeof filters, value: any) =>
-    setFilters((prev) => ({ ...prev, [key]: value }));
+  const handleFilterChange = <K extends keyof FiltersState>(
+    key: K,
+    value: FiltersState[K]
+  ) => setFilters((prev) => ({ ...prev, [key]: value }));
 
   const clearAllFilters = () =>
     setFilters({ location: "", minPrice: 0, maxPrice: 1000, stars: 0, sortBy: "recommended" });
@@ -281,7 +291,7 @@ export default function HotelsList() {
                   <select
                     value={filters.sortBy}
                     onChange={(e) =>
-                      handleFilterChange("sortBy", e.target.value as any)
+                      handleFilterChange("sortBy", e.target.value as FiltersState["sortBy"])
                     }
                     className="px-4 py-2 rounded-xl border border-slate-200 bg-white/80 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                   >

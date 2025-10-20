@@ -3,13 +3,13 @@ import {
   Search,
   Plane,
   Calendar,
-  ChevronDown,
-  ChevronUp,
   Minus,
   Plus,
-  Filter,
+  SlidersHorizontal,
+  X,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-
 
 /* ===================== Types ===================== */
 type Flight = {
@@ -26,23 +26,21 @@ type Flight = {
   price: number;
   class: string;
 };
-
-type SortKey = "cheapest" | "non-stop" | "prefer" | "other";
-
+type SortKey = "cheapest" | "non-stop" | "earliest" | "latest";
 type Filters = {
   freeCancellation: boolean;
-  hotels: boolean;
   noPrepayment: boolean;
   breakfastIncluded: boolean;
+  hotels: boolean;
 };
 type FilterKey = keyof Filters;
 
-/* ===================== Mock data ===================== */
+/* ===================== Mock demo ===================== */
 const mockFlights: Flight[] = [
   {
     id: 1,
     airline: "Garuda Indonesia",
-    flightNumber: "GI 2112 | 14 h 30 min",
+    flightNumber: "GI 2112 · 14h30m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
     from: "Indonesia (CGK)",
@@ -57,7 +55,7 @@ const mockFlights: Flight[] = [
   {
     id: 2,
     airline: "Qatar Airways",
-    flightNumber: "QA 1444 | 14 h 30 min",
+    flightNumber: "QA 1444 · 14h30m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
     from: "Indonesia (CGK)",
@@ -72,7 +70,7 @@ const mockFlights: Flight[] = [
   {
     id: 3,
     airline: "Emirates",
-    flightNumber: "EK 882 | 15 h 10 min",
+    flightNumber: "EK 882 · 15h10m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
     from: "Indonesia (CGK)",
@@ -86,559 +84,554 @@ const mockFlights: Flight[] = [
   },
 ];
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 8;
 
-/* ===================== Component ===================== */
-export default function Flights() {
-  /* ---- core state ---- */
+/* ===================== Page ===================== */
+export default function FlightsNew() {
+  /** Core state (giản lược, dễ thay API sau) */
   const [flights, setFlights] = useState<Flight[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [expandedFlight, setExpandedFlight] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  /** Search state */
+  const [fromCity, setFromCity] = useState("Soekarno Hatta (CGK)");
+  const [toCity, setToCity] = useState("Zurich (ZRH)");
+  const [depart, setDepart] = useState("2024-12-28");
+  const [ret, setRet] = useState("2024-12-31");
+  const [pax, setPax] = useState(2);
+
+  /** Filters & sort */
   const [sortBy, setSortBy] = useState<SortKey>("cheapest");
-  const [currentPage, setCurrentPage] = useState<number>(1);
-
-  /* ---- search params ---- */
-  const [fromCity, setFromCity] = useState<string>("Soekarno Hatta Airport — CGK");
-  const [toCity, setToCity] = useState<string>("Switzerland — ZRH");
-  const [dateFrom, setDateFrom] = useState<string>("2024-12-28");
-  const [dateTo, setDateTo] = useState<string>("2024-12-31");
-  const [persons, setPersons] = useState<number>(2);
-
-  /* ---- filters ---- */
-  const [budgetRange, setBudgetRange] = useState<[number, number]>([200, 500]);
-  const [showBudgetFilter, setShowBudgetFilter] = useState<boolean>(true);
-  const [showPopularFilter, setShowPopularFilter] = useState<boolean>(true);
-  const [showFunThings, setShowFunThings] = useState<boolean>(true);
+  const [budget, setBudget] = useState<[number, number]>([200, 600]);
   const [filters, setFilters] = useState<Filters>({
     freeCancellation: false,
-    hotels: false,
     noPrepayment: false,
     breakfastIncluded: false,
+    hotels: false,
   });
 
- // thay thế useEffect hiện tại trong FlightDetail
-useEffect(() => {
-  setIsLoading(true);
+  /** UI filter panel (mobile) */
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  fetch("/mock/flights.json")
-    .then((r) => r.json())
-    .then((rows: any[]) => {
-      // map JSON -> schema FlightDetail đang dùng
-      const mapped = rows.map((r, i) => {
-        const fmt = (s: string) =>
-          new Date(s).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-        return {
-          id: r.id ?? i + 1,
-          airline: r.airline,
-          flightNumber: r.flightNumber,
-          from: r.fromAirport,      // map field
-          to: r.toAirport,          // map field
-          departureTime: fmt(r.departureTime),
-          arrivalTime: fmt(r.arrivalTime),
-          duration: `${Math.floor(r.durationMin / 60)}h ${r.durationMin % 60}m`,
-          stops: "Non Stop",        // dữ liệu generator là chuyến thẳng; bạn có thể tính khác nếu muốn
-          price: r.price,
-          class: "Economy",
-          logo: r.logo || "",
-        };
-      });
-
-      setFlights(mapped);
-    })
-    .catch((e) => {
-      console.error("Load flights failed:", e);
-      setFlights([]); // fallback
-    })
-    .finally(() => setIsLoading(false));
-}, []);
-
-
-  const handleSearch = () => {
+  /** Fetch demo */
+  useEffect(() => {
     setIsLoading(true);
+    // giả lập fetch
     const t = setTimeout(() => {
-      // giữ nguyên logic demo
       setFlights(mockFlights);
       setIsLoading(false);
-    }, 350);
+    }, 300);
     return () => clearTimeout(t);
-  };
-
-  const toggleFilter = (key: FilterKey) => {
-    setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  }, []);
 
   const parseStops = (s: string) => {
     if (/non\s*stop/i.test(s)) return 0;
     const m = s.match(/(\d+)/);
     return m ? parseInt(m[1], 10) : 99;
-    // 99 để luôn đứng sau các tuỳ chọn có dữ liệu
   };
 
-  /* ---- derived list ---- */
-  const visibleFlights: Flight[] = useMemo(
-    () =>
-      [...flights]
-        .filter((f) => f.price >= budgetRange[0] && f.price <= budgetRange[1])
-        .sort((a, b) => {
-          if (sortBy === "cheapest") return a.price - b.price;
-          if (sortBy === "non-stop")
-            return parseStops(a.stops) - parseStops(b.stops) || a.price - b.price;
-          return 0;
-        }),
-    [flights, budgetRange, sortBy]
-  );
+  /** Derived list */
+  const visible = useMemo(() => {
+    const list = [...flights].filter((f) => f.price >= budget[0] && f.price <= budget[1]);
 
-  const totalFlights = visibleFlights.length;
-  const totalPages = Math.max(1, Math.ceil(totalFlights / PAGE_SIZE));
-
-  const paginatedFlights = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return visibleFlights.slice(start, start + PAGE_SIZE);
-  }, [visibleFlights, currentPage]);
-
-  const startFlightIndex = totalFlights === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const endFlightIndex = Math.min(currentPage * PAGE_SIZE, totalFlights);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [flights, budgetRange, sortBy]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
+    switch (sortBy) {
+      case "cheapest":
+        list.sort((a, b) => a.price - b.price);
+        break;
+      case "non-stop":
+        list.sort((a, b) => parseStops(a.stops) - parseStops(b.stops) || a.price - b.price);
+        break;
+      case "earliest":
+        list.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
+        break;
+      case "latest":
+        list.sort((a, b) => b.departureTime.localeCompare(a.departureTime));
+        break;
     }
-  }, [currentPage, totalPages]);
+    return list;
+  }, [flights, budget, sortBy]);
 
-  /* ===================== UI ===================== */
+  /** Pagination (nếu sau này nhiều dữ liệu) */
+  const [page, setPage] = useState(1);
+  const total = visible.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageList = useMemo(() => {
+    const s = (page - 1) * PAGE_SIZE;
+    return visible.slice(s, s + PAGE_SIZE);
+  }, [visible, page]);
+  useEffect(() => setPage(1), [visible]);
+
+  /** Events */
+  const toggleFilter = (k: FilterKey) => setFilters((p) => ({ ...p, [k]: !p[k] }));
+  const resetFilters = () => {
+    setBudget([200, 600]);
+    setFilters({
+      freeCancellation: false,
+      noPrepayment: false,
+      breakfastIncluded: false,
+      hotels: false,
+    });
+  };
+  const runSearch = () => {
+    setIsLoading(true);
+    const t = setTimeout(() => {
+      setFlights(mockFlights);
+      setIsLoading(false);
+    }, 300);
+    return () => clearTimeout(t);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ===== Top Controls ===== */}
-      <div className="bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-6 md:px-8 py-6">
-          {/* Pills row */}
+    <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-slate-900">
+      {/* Top bar (sticky) */}
+      <header className="sticky top-0 z-30 border-b border-sky-100 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
             {/* From */}
             <div className="md:col-span-3">
-              <label className="text-sm font-medium text-gray-600 mb-1 block">From</label>
-              <div className="relative group">
-                <input
-                  value={fromCity}
-                  onChange={(e) => setFromCity(e.target.value)}
-                  placeholder="From"
-                  className="w-full h-[52px] rounded-xl border border-gray-200 bg-white px-4 pr-9 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/70"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <ChevronDown className="h-5 w-5" />
-                </span>
-              </div>
+              <label className="text-xs font-semibold text-slate-600">From</label>
+              <input
+                className="mt-1 w-full h-11 rounded-xl border border-sky-200 bg-white px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                value={fromCity}
+                onChange={(e) => setFromCity(e.target.value)}
+                placeholder="City or airport"
+              />
             </div>
-
             {/* To */}
             <div className="md:col-span-3">
-              <label className="text-sm font-medium text-gray-600 mb-1 block">To</label>
-              <div className="relative">
-                <input
-                  value={toCity}
-                  onChange={(e) => setToCity(e.target.value)}
-                  placeholder="To"
-                  className="w-full h-[52px] rounded-xl border border-gray-200 bg-white px-4 pr-9 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/70"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  <ChevronDown className="h-5 w-5" />
-                </span>
-              </div>
+              <label className="text-xs font-semibold text-slate-600">To</label>
+              <input
+                className="mt-1 w-full h-11 rounded-xl border border-sky-200 bg-white px-3"
+                value={toCity}
+                onChange={(e) => setToCity(e.target.value)}
+                placeholder="City or airport"
+              />
             </div>
-
-            {/* Date range */}
-            <div className="md:col-span-3">
-              <label className="text-sm font-medium text-gray-600 mb-1 block">
-                Departure Date
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
+            {/* Dates */}
+            <div className="md:col-span-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Depart</label>
+                <div className="relative mt-1">
                   <input
                     type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="w-full h-[52px] rounded-xl border border-gray-200 bg-white px-4 pr-9 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/70"
+                    className="w-full h-11 rounded-xl border border-sky-200 bg-white px-3 pr-8"
+                    value={depart}
+                    onChange={(e) => setDepart(e.target.value)}
                   />
-                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                  <Calendar className="h-4 w-4 text-sky-500 absolute right-2 top-1/2 -translate-y-1/2" />
                 </div>
-                <div className="relative flex-1">
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Return</label>
+                <div className="relative mt-1">
                   <input
                     type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="w-full h-[52px] rounded-xl border border-gray-200 bg-white px-4 pr-9 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/70"
+                    className="w-full h-11 rounded-xl border border-sky-200 bg-white px-3 pr-8"
+                    value={ret}
+                    onChange={(e) => setRet(e.target.value)}
                   />
-                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+                  <Calendar className="h-4 w-4 text-sky-500 absolute right-2 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
             </div>
-
-            {/* Passengers */}
+            {/* Pax */}
             <div className="md:col-span-2">
-              <label className="text-sm font-medium text-gray-600 mb-1 block">
-                Passengers
-              </label>
-              <div className="h-[52px] w-full rounded-xl border border-gray-200 bg-white px-2 flex items-center justify-between">
-                <button
-                  onClick={() => setPersons((n) => Math.max(1, n - 1))}
-                  className="p-2 rounded-lg hover:bg-gray-100"
-                  aria-label="Decrease passengers"
-                >
-                  <Minus className="h-5 w-5 text-gray-700" />
+              <label className="text-xs font-semibold text-slate-600">Passengers</label>
+              <div className="mt-1 h-11 rounded-xl border border-sky-200 bg-white px-2 flex items-center justify-between">
+                <button onClick={() => setPax((n) => Math.max(1, n - 1))} className="p-2 rounded-lg hover:bg-sky-50">
+                  <Minus className="h-4 w-4" />
                 </button>
-                <div className="px-3 text-gray-900 font-medium select-none">
-                  {persons} {persons > 1 ? "People" : "Person"}
-                </div>
-                <button
-                  onClick={() => setPersons((n) => n + 1)}
-                  className="p-2 rounded-lg hover:bg-gray-100"
-                  aria-label="Increase passengers"
-                >
-                  <Plus className="h-5 w-5 text-gray-700" />
+                <span className="font-semibold">{pax}</span>
+                <button onClick={() => setPax((n) => n + 1)} className="p-2 rounded-lg hover:bg-sky-50">
+                  <Plus className="h-4 w-4" />
                 </button>
               </div>
             </div>
-
-            {/* Search */}
-            <div className="md:col-span-1 flex items-end">
+            {/* Actions */}
+            <div className="md:col-span-1 flex gap-2 items-end">
               <button
-                onClick={handleSearch}
-                className="inline-flex w-full md:w-auto items-center justify-center gap-2 h-[52px] px-5 rounded-xl bg-gray-900 text-white font-semibold hover:bg-gray-800 transition-colors"
+                onClick={() => setFilterOpen(true)}
+                className="h-11 flex-1 rounded-xl border border-sky-200 bg-white text-slate-800 font-semibold hover:bg-sky-50 inline-flex items-center justify-center gap-2"
               >
-                <Search className="h-5 w-5" />
-                <span className="hidden md:inline">Search Ticket</span>
+                <SlidersHorizontal className="h-4 w-4" />
+                Filters
+              </button>
+              <button
+                onClick={runSearch}
+                className="h-11 flex-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600 inline-flex items-center justify-center gap-2"
+              >
+                <Search className="h-4 w-4" />
+                Search
+              </button>
+            </div>
+          </div>
+
+          {/* Chips row */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <SortChip label="Cheapest" active={sortBy === "cheapest"} onClick={() => setSortBy("cheapest")} />
+            <SortChip label="Non-stop first" active={sortBy === "non-stop"} onClick={() => setSortBy("non-stop")} />
+            <SortChip label="Earliest" active={sortBy === "earliest"} onClick={() => setSortBy("earliest")} />
+            <SortChip label="Latest" active={sortBy === "latest"} onClick={() => setSortBy("latest")} />
+            <div className="ml-auto text-slate-500">
+              {fromCity} → {toCity}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Sidebar (desktop) */}
+          <aside className="hidden lg:block lg:col-span-3">
+            <FilterPanel
+              budget={budget}
+              setBudget={setBudget}
+              filters={filters}
+              toggleFilter={toggleFilter}
+              reset={resetFilters}
+            />
+          </aside>
+
+          {/* Results */}
+          <section className="lg:col-span-9 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-slate-600">
+                Found <span className="font-semibold text-slate-900">{total}</span> flights
+              </div>
+              <div className="text-sm text-slate-500">Budget: ${budget[0]}–${budget[1]}</div>
+            </div>
+
+            {isLoading ? (
+              <div className="rounded-2xl border border-sky-100 bg-white/70 p-10 grid place-items-center">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-sky-600" />
+              </div>
+            ) : total === 0 ? (
+              <EmptyState onReset={runSearch} />
+            ) : (
+              <>
+                {pageList.map((f) => (
+                  <FlightCard
+                    key={f.id}
+                    f={f}
+                    expanded={expanded === f.id}
+                    onToggle={() => setExpanded((id) => (id === f.id ? null : f.id))}
+                    parseStops={parseStops}
+                  />
+                ))}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
+                    >
+                      Previous
+                    </button>
+                    <div className="text-sm">
+                      Page <span className="font-semibold">{page}</span> / {totalPages}
+                    </div>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </main>
+
+      {/* Filter Drawer (mobile & tablet) */}
+      {filterOpen && (
+        <div className="fixed inset-0 z-40">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setFilterOpen(false)} />
+          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Filters</h3>
+              <button onClick={() => setFilterOpen(false)} className="p-2 rounded-lg hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto h-[calc(100%-64px-64px)]">
+              <FilterPanel
+                budget={budget}
+                setBudget={setBudget}
+                filters={filters}
+                toggleFilter={toggleFilter}
+                reset={resetFilters}
+              />
+            </div>
+            <div className="p-4 border-t border-slate-200">
+              <button
+                className="w-full h-12 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600"
+                onClick={() => setFilterOpen(false)}
+              >
+                Apply Filters
               </button>
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ===================== Subcomponents ===================== */
+
+function SortChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "px-3 py-1.5 rounded-full text-sm border transition-all",
+        active
+          ? "bg-sky-600 text-white border-sky-600 shadow"
+          : "bg-white text-slate-700 border-sky-200 hover:bg-sky-50",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
+function FilterPanel({
+  budget,
+  setBudget,
+  filters,
+  toggleFilter,
+  reset,
+}: {
+  budget: [number, number];
+  setBudget: (v: [number, number]) => void;
+  filters: Filters;
+  toggleFilter: (k: FilterKey) => void;
+  reset: () => void;
+}) {
+  const [openBudget, setOpenBudget] = useState(true);
+  const [openPopular, setOpenPopular] = useState(true);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xl font-bold">Refine</h4>
+        <button onClick={reset} className="text-sm text-sky-700 hover:text-sky-900 font-medium">
+          Reset
+        </button>
       </div>
 
-      {/* ===== Main ===== */}
-      <div className="max-w-7xl mx-auto px-6 md:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Sidebar filters */}
-          <aside className="lg:col-span-3">
-            <div className="sticky top-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-gray-900">Filters</h3>
-                <button className="text-sm text-gray-500 hover:text-gray-900">
-                  Reset
-                </button>
-              </div>
-
-              {/* Transit Amount */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                <p className="font-semibold text-gray-900 mb-4">Transit Amount</p>
-                <div className="space-y-3 text-sm">
-                  {["All", "Non-Transit", "1 stop", "2 stop"].map((x) => (
-                    <label key={x} className="flex items-center gap-3">
-                      <input type="radio" name="transit" className="accent-gray-900" />
-                      <span className="text-gray-700">{x}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Budget */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                <button
-                  onClick={() => setShowBudgetFilter((v) => !v)}
-                  className="flex items-center justify-between w-full mb-4"
-                >
-                  <span className="font-semibold text-gray-900">Price Range</span>
-                  {showBudgetFilter ? (
-                    <ChevronUp className="h-5 w-5" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5" />
-                  )}
-                </button>
-
-                {showBudgetFilter && (
-                  <>
-                    <input
-                      type="range"
-                      min={100}
-                      max={1000}
-                      value={budgetRange[1]}
-                      onChange={(e) =>
-                        setBudgetRange([budgetRange[0], parseInt(e.target.value, 10)])
-                      }
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-sm font-medium text-gray-900 mt-2">
-                      <span>${budgetRange[0]}</span>
-                      <span>${budgetRange[1]}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Popular */}
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                <button
-                  onClick={() => setShowPopularFilter((v) => !v)}
-                  className="flex items-center justify-between w-full mb-4"
-                >
-                  <span className="font-semibold text-gray-900">Popular Filter</span>
-                  {showPopularFilter ? (
-                    <ChevronUp className="h-5 w-5" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5" />
-                  )}
-                </button>
-
-                {showPopularFilter && (
-                  <div className="space-y-3">
-                    {([
-                      { key: "freeCancellation", label: "Free Cancellation", count: 305 },
-                      { key: "hotels", label: "Hotels", count: 214 },
-                      { key: "noPrepayment", label: "No Prepayment", count: 325 },
-                      { key: "breakfastIncluded", label: "Breakfast Included", count: 106 },
-                    ] as { key: FilterKey; label: string; count: number }[]).map((f) => (
-                      <label
-                        key={f.key}
-                        className="flex items-center justify-between cursor-pointer group"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            checked={filters[f.key]}
-                            onChange={() => toggleFilter(f.key)}
-                            className="w-5 h-5 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
-                          />
-                          <span className="text-gray-700 group-hover:text-gray-900">
-                            {f.label}
-                          </span>
-                        </div>
-                        <span className="text-gray-500 text-sm">{f.count}</span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* CTA Filter apply */}
-              <button className="w-full inline-flex items-center justify-center gap-2 bg-gray-900 text-white h-12 rounded-xl font-semibold hover:bg-gray-800 transition-colors">
-                <Filter className="h-5 w-5" />
-                Apply Filters
-              </button>
+      {/* Budget */}
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <button
+          onClick={() => setOpenBudget((v) => !v)}
+          className="flex items-center justify-between w-full"
+        >
+          <span className="font-semibold text-slate-900">Budget</span>
+          {openBudget ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </button>
+        {openBudget && (
+          <div className="mt-4">
+            <input
+              type="range"
+              min={100}
+              max={1000}
+              value={budget[1]}
+              onChange={(e) => setBudget([budget[0], parseInt(e.target.value, 10)])}
+              className="w-full accent-sky-600"
+            />
+            <div className="mt-2 flex justify-between text-sm font-medium text-slate-900">
+              <span>${budget[0]}</span>
+              <span>${budget[1]}</span>
             </div>
-          </aside>
+          </div>
+        )}
+      </div>
 
-          {/* Results */}
-          <main className="lg:col-span-9">
-            {/* Header */}
-            <div className="bg-white rounded-2xl border border-gray-200 px-4 md:px-6 py-3 mb-4 flex items-center justify-between">
-              <div className="text-sm md:text-base text-gray-700">
-                Result • <span className="font-semibold">{totalFlights}</span> flights
-                found
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-gray-600 text-sm hidden md:block">Sort:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as SortKey)}
-                  className="h-10 rounded-lg border border-gray-200 bg-white px-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/70"
-                >
-                  <option value="cheapest">Cheapest</option>
-                  <option value="non-stop">Non Stop First</option>
-                  <option value="prefer">You May Prefer</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+      {/* Popular */}
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <button
+          onClick={() => setOpenPopular((v) => !v)}
+          className="flex items-center justify-between w-full"
+        >
+          <span className="font-semibold text-slate-900">Popular</span>
+          {openPopular ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </button>
+
+        {openPopular && (
+          <div className="mt-4 space-y-3 text-sm">
+            {([
+              { k: "freeCancellation", label: "Free cancellation" },
+              { k: "noPrepayment", label: "No prepayment" },
+              { k: "breakfastIncluded", label: "Breakfast included" },
+              { k: "hotels", label: "Show hotels" },
+            ] as { k: FilterKey; label: string }[]).map(({ k, label }) => (
+              <label key={k} className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 rounded border-slate-300 text-sky-600 focus:ring-sky-600"
+                  checked={filters[k]}
+                  onChange={() => toggleFilter(k)}
+                />
+                <span className="text-slate-700">{label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tip */}
+      <div className="rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 to-cyan-50 p-5">
+        <div className="font-semibold text-slate-900">Travel tip</div>
+        <p className="text-sm text-slate-600 mt-1">
+          Flying before 9:00 can save on average 10–15% on popular routes.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function FlightCard({
+  f,
+  expanded,
+  onToggle,
+  parseStops,
+}: {
+  f: Flight;
+  expanded: boolean;
+  onToggle: () => void;
+  parseStops: (s: string) => number;
+}) {
+  return (
+    <div className="rounded-3xl border border-sky-100 bg-white shadow-sm overflow-hidden">
+      <div className="p-5">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-sky-50 border border-sky-100 overflow-hidden grid place-items-center">
+              <img
+                src={f.logo}
+                alt={`${f.airline} logo`}
+                className="max-w-full max-h-full object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src =
+                    "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=128&auto=format&fit=crop";
+                }}
+              />
             </div>
+            <div>
+              <div className="font-semibold text-slate-900">{f.airline}</div>
+              <div className="text-slate-500 text-sm">{f.flightNumber}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge>{f.class}</Badge>
+            <Badge>{parseStops(f.stops) === 0 ? "Direct" : f.stops}</Badge>
+          </div>
+        </div>
 
-            {/* Cards */}
-            {isLoading ? (
-              <div className="bg-white rounded-2xl border border-gray-200 p-10 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-4 border-gray-200 border-t-gray-900" />
-              </div>
-            ) : visibleFlights.length > 0 ? (
-              <div className="space-y-5">
-                {paginatedFlights.map((flight) => (
-                  <div
-                    key={flight.id}
-                    className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden"
-                  >
-                    <div className="p-5 md:p-6">
-                      {/* Top row */}
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        {/* Airline */}
-                        <div className="flex items-start gap-4">
-                         <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
-  <img
-    src={flight.logo}                         // URL Clearbit từ JSON
-    alt={`${flight.airline} logo`}
-    className="max-w-full max-h-full object-contain"
-    loading="lazy"
-    referrerPolicy="no-referrer"
-    onError={(e) => {
-      const img = e.currentTarget as HTMLImageElement;
-      // Nếu Clearbit bị chặn, thử logoAlt (Google favicon) từ JSON
-      if (!img.dataset.fallbackTried && (flight as any).logoAlt) {
-        img.dataset.fallbackTried = "1";
-        img.src = (flight as any).logoAlt;
-      } else {
-        // Fallback cuối cùng
-        img.src =
-          "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=128&auto=format&fit=crop";
-      }
-    }}
-  />
-</div>
+        {/* Timeline */}
+        <div className="mt-5 flex items-center justify-between text-slate-700">
+          <div>
+            <div className="text-xs text-slate-500 mb-1">Wed, 21 Jun</div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold">{f.departureTime}</span>
+              <span className="text-slate-600">{f.from}</span>
+            </div>
+          </div>
+          <div className="hidden md:flex items-center gap-2 flex-1 px-6">
+            <div className="h-px w-full border-t border-dotted border-slate-300" />
+            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 text-white grid place-items-center shadow">
+              <Plane className="h-5 w-5 -rotate-90" />
+            </div>
+            <div className="h-px w-full border-t border-dotted border-slate-300" />
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-slate-500 mb-1">Thu, 22 Jun</div>
+            <div className="flex items-center gap-2 justify-end">
+              <span className="text-2xl font-bold">{f.arrivalTime}</span>
+              <span className="text-slate-600">{f.to}</span>
+            </div>
+          </div>
+        </div>
 
-                          <div>
-                            <div className="font-semibold text-gray-900">
-                              {flight.airline}
-                            </div>
-                            <div className="text-gray-500 text-sm">{flight.flightNumber}</div>
-                          </div>
-                        </div>
-
-                        {/* Chips */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
-                            {flight.class} Class
-                          </span>
-                          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
-                            {parseStops(flight.stops) === 0 ? "Direct Flight" : flight.stops}
-                          </span>
-                          <button className="ml-1 h-8 w-8 rounded-full bg-gray-100 text-gray-600 grid place-items-center hover:bg-gray-200">
-                            <ChevronDown className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Timeline */}
-                      <div className="mt-5">
-                        <div className="flex items-center justify-between text-gray-700">
-                          <div>
-                            <div className="text-xs text-gray-500 mb-1">Wed, 21 Jun</div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-2xl font-semibold">{flight.departureTime}</span>
-                              <span className="text-gray-600">{flight.from}</span>
-                            </div>
-                          </div>
-
-                          {/* dotted line + plane */}
-                          <div className="hidden md:flex items-center gap-2 flex-1 px-6">
-                            <div className="h-px w-full border-t border-dotted border-gray-300" />
-                            <div className="shrink-0 grid place-items-center">
-                              <div className="h-10 w-10 rounded-full bg-gray-900 text-white grid place-items-center shadow">
-                                <Plane className="h-5 w-5 -rotate-90" />
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1 text-center">
-                                Estimate: {flight.duration}
-                              </div>
-                            </div>
-                            <div className="h-px w-full border-t border-dotted border-gray-300" />
-                          </div>
-
-                          <div className="text-right">
-                            <div className="text-xs text-gray-500 mb-1">Thu, 22 Jun</div>
-                            <div className="flex items-center gap-2 justify-end">
-                              <span className="text-2xl font-semibold">{flight.arrivalTime}</span>
-                              <span className="text-gray-600">{flight.to}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Price & CTA */}
-                      <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="text-3xl font-bold text-gray-900">
-                          USD {flight.price.toFixed(2)}
-                          <span className="text-sm text-gray-500 font-normal"> /person</span>
-                        </div>
-                        <button
-                          onClick={() =>
-                            setExpandedFlight((cur) => (cur === flight.id ? null : flight.id))
-                          }
-                          className="inline-flex items-center justify-center px-6 h-11 rounded-xl font-semibold border-2 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white transition-colors"
-                        >
-                          {expandedFlight === flight.id ? "Hide" : "Select Flight"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expand area */}
-                    {expandedFlight === flight.id && (
-                      <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 text-sm">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                          <div>Class: {flight.class}</div>
-                          <div>
-                            Base ${Math.round(flight.price * 0.85)} + Tax $
-                            {Math.round(flight.price * 0.15)}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tabs row (UI only) */}
-                    <div className="border-t border-gray-200 bg-gray-50">
-                      <div className="flex items-center gap-6 px-6 py-3 text-sm font-medium text-gray-600">
-                        <button className="hover:text-gray-900">Flight Details</button>
-                        <button className="hover:text-gray-900">Price Details</button>
-                        <button className="hover:text-gray-900">Policy</button>
-                        <button className="hover:text-gray-900">Refund</button>
-                        <button className="hover:text-gray-900">Reschedule</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {totalFlights > 0 && (
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pt-2">
-                    <div className="text-sm text-gray-600">
-                      Showing {startFlightIndex}-{endFlightIndex} of {totalFlights} flights
-                    </div>
-                    {totalPages > 1 && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                          disabled={currentPage === 1}
-                          className="h-10 px-4 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 disabled:text-gray-400 disabled:border-gray-100 hover:bg-gray-50 transition-colors"
-                        >
-                          Previous
-                        </button>
-                        <span className="text-sm text-gray-700">
-                          Page {currentPage} of {totalPages}
-                        </span>
-                        <button
-                          onClick={() =>
-                            setCurrentPage((page) => Math.min(totalPages, page + 1))
-                          }
-                          disabled={currentPage === totalPages}
-                          className="h-10 px-4 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 disabled:text-gray-400 disabled:border-gray-100 hover:bg-gray-50 transition-colors"
-                        >
-                          Next
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-200">
-                <Plane className="h-20 w-20 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">No flights found</h3>
-                <p className="text-gray-600 mb-6">
-                  Try adjusting your search criteria to find more flights.
-                </p>
-                <button
-                  onClick={handleSearch}
-                  className="bg-gray-900 text-white px-8 py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors"
-                >
-                  Clear Search
-                </button>
-              </div>
-            )}
-          </main>
+        {/* Bottom row */}
+        <div className="mt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="text-3xl font-extrabold text-slate-900">
+            USD {f.price.toFixed(2)}
+            <span className="text-sm text-slate-500 font-normal"> /person</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onToggle}
+              className="px-5 h-11 rounded-xl border-2 border-sky-200 text-sky-700 font-bold hover:bg-sky-50"
+            >
+              {expanded ? "Hide details" : "Select flight"}
+            </button>
+            <button className="px-5 h-11 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600">
+              Book
+            </button>
+          </div>
         </div>
       </div>
+
+      {expanded && (
+        <div className="border-t border-sky-100 bg-sky-50/60 px-5 py-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <div className="text-slate-500">Baggage</div>
+              <div className="font-medium">1 x 23kg checked</div>
+            </div>
+            <div>
+              <div className="text-slate-500">Estimated</div>
+              <div className="font-medium">{f.duration}</div>
+            </div>
+            <div>
+              <div className="text-slate-500">Fare breakdown</div>
+              <div className="font-medium">
+                Base ${Math.round(f.price * 0.85)} + Tax ${Math.round(f.price * 0.15)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="px-3 py-1 rounded-full bg-sky-50 text-sky-700 border border-sky-100 text-sm font-medium">
+      {children}
+    </span>
+  );
+}
+
+function EmptyState({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="rounded-3xl border border-sky-100 bg-white p-12 text-center">
+      <Plane className="h-16 w-16 text-sky-300 mx-auto mb-4" />
+      <h3 className="text-2xl font-bold">No flights found</h3>
+      <p className="text-slate-600 mt-2">Change dates/airports or relax filters to see more.</p>
+      <button
+        onClick={onReset}
+        className="mt-6 px-6 h-11 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600"
+      >
+        Try again
+      </button>
     </div>
   );
 }

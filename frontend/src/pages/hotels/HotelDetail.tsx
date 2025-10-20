@@ -9,10 +9,6 @@ import {
   Waves,
   Dumbbell,
   Utensils,
-  Calendar,
-  Users,
-  Check,
-  X,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -172,8 +168,9 @@ export default function HotelDetail() {
         /* noop -> dùng fallback */
       }
       if (mounted) {
-        setHotel(mockHotelData as unknown as Hotel);
-        setSelectedRoom((mockHotelData as any).rooms?.[0] || null);
+        const fallback = mockHotelData as unknown as Hotel;
+        setHotel(fallback);
+        setSelectedRoom(fallback.rooms?.[0] ?? null);
         setIsLoading(false);
       }
     })();
