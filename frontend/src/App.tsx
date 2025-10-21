@@ -22,6 +22,7 @@ import Bookings from './pages/dashboard/Bookings';
 import Tickets from './pages/dashboard/Tickets';
 import Profile from './pages/dashboard/Profile';
 import Checkout from './pages/checkout/Checkout';
+import FlightDetails from './pages/flights/FlightDetails';
 
 function App() {
   const { bootstrap, isBootstrapping } = useAuthStore();
@@ -50,6 +51,7 @@ function App() {
             <Route path="/hotels/:slug" element={<HotelDetail />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/flights" element={<Flights />} />
+             <Route path="/flights/:id" element={<FlightDetails />} /> 
 
             {/* Auth: cùng 1 component, tự nhận biết qua path (/login | /register) */}
             <Route path="/login" element={<AuthPage />} />

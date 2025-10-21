@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Search,
+  Search as SearchIcon,
   Plane,
   Calendar,
   Minus,
@@ -9,9 +9,21 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ArrowLeftRight,
+  Users,
+  Briefcase,
+  MapPin,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  AIRPORTS,
+  groupAirportsByRegion,
+  REGION_LABEL,
+  type Airport,
+  type RegionKey,
+} from "../../data/airports";
 
-/* ===================== Types ===================== */
+/* ===================== Types (demo) ===================== */
 type Flight = {
   id: number;
   airline: string;
@@ -19,21 +31,26 @@ type Flight = {
   logo: string;
   from: string;
   to: string;
-  departureTime: string;
-  arrivalTime: string;
-  duration: string;
-  stops: string; // "Non Stop" | "1 Stop" | "2 Stops"...
+  departureTime: string; // "07:30 PM"
+  arrivalTime: string; // "11:00 PM"
+  duration: string; // "2h 40m"
+  stops: string; // "Non Stop" | "1 Stop" | "2 Stops"
   price: number;
-  class: string;
+  class: string; // "Economy" | "Business"...
 };
+
 type SortKey = "cheapest" | "non-stop" | "earliest" | "latest";
+type TripType = "round" | "oneway";
+type CabinClass = "Economy" | "Premium Economy" | "Business" | "First";
+
 type Filters = {
-  freeCancellation: boolean;
-  noPrepayment: boolean;
-  breakfastIncluded: boolean;
-  hotels: boolean;
+  stops: number[];
+  airlines: string[];
+  budget: [number, number];
 };
-type FilterKey = keyof Filters;
+
+const ALL_AIRLINES = ["Garuda Indonesia", "Qatar Airways", "Emirates"];
+const PAGE_SIZE = 8;
 
 /* ===================== Mock demo ===================== */
 const mockFlights: Flight[] = [
@@ -43,8 +60,8 @@ const mockFlights: Flight[] = [
     flightNumber: "GI 2112 · 14h30m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
-    from: "Indonesia (CGK)",
-    to: "Switzerland (ZRH)",
+    from: "Hà Nội (HAN)",
+    to: "Zurich (ZRH)",
     departureTime: "10:00 PM",
     arrivalTime: "1:30 AM",
     duration: "2h 30m",
@@ -58,8 +75,8 @@ const mockFlights: Flight[] = [
     flightNumber: "QA 1444 · 14h30m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
-    from: "Indonesia (CGK)",
-    to: "Switzerland (ZRH)",
+    from: "TP. Hồ Chí Minh (SGN)",
+    to: "Zurich (ZRH)",
     departureTime: "09:15 PM",
     arrivalTime: "12:45 AM",
     duration: "3h 05m",
@@ -73,8 +90,8 @@ const mockFlights: Flight[] = [
     flightNumber: "EK 882 · 15h10m",
     logo:
       "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=100&auto=format&fit=crop",
-    from: "Indonesia (CGK)",
-    to: "Switzerland (ZRH)",
+    from: "Đà Nẵng (DAD)",
+    to: "Zurich (ZRH)",
     departureTime: "07:30 PM",
     arrivalTime: "11:00 PM",
     duration: "2h 40m",
@@ -84,39 +101,65 @@ const mockFlights: Flight[] = [
   },
 ];
 
-const PAGE_SIZE = 8;
+/* ===================== Helpers ===================== */
+const parseStopsCount = (s: string) => {
+  if (/non\s*stop/i.test(s)) return 0;
+  const m = s.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 99;
+};
+const timeToMinutes = (t: string) => {
+  // "07:30 PM" -> minutes since 00:00 (naive)
+  const [hhmm, ap] = t.split(" ");
+  const [hh, mm] = hhmm.split(":").map(Number);
+  let h = hh % 12;
+  if (ap?.toUpperCase() === "PM") h += 12;
+  return h * 60 + (mm || 0);
+};
 
 /* ===================== Page ===================== */
-export default function FlightsNew() {
-  /** Core state (giản lược, dễ thay API sau) */
+export default function Flights() {
+  /** Core state */
   const [flights, setFlights] = useState<Flight[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const navigate = useNavigate();
 
   /** Search state */
-  const [fromCity, setFromCity] = useState("Soekarno Hatta (CGK)");
+  const [tripType, setTripType] = useState<TripType>("round");
+  const [fromCity, setFromCity] = useState("Hà Nội (HAN)");
   const [toCity, setToCity] = useState("Zurich (ZRH)");
   const [depart, setDepart] = useState("2024-12-28");
   const [ret, setRet] = useState("2024-12-31");
   const [pax, setPax] = useState(2);
+  const [cabin, setCabin] = useState<CabinClass>("Economy");
 
-  /** Filters & sort */
+  /** Sort & Filters */
   const [sortBy, setSortBy] = useState<SortKey>("cheapest");
-  const [budget, setBudget] = useState<[number, number]>([200, 600]);
   const [filters, setFilters] = useState<Filters>({
-    freeCancellation: false,
-    noPrepayment: false,
-    breakfastIncluded: false,
-    hotels: false,
+    stops: [0, 1, 2],
+    airlines: [],
+    budget: [200, 600],
   });
 
-  /** UI filter panel (mobile) */
-  const [filterOpen, setFilterOpen] = useState(false);
+  /** LocationPicker (popup) */
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerField, setPickerField] = useState<"from" | "to">("from");
+
+  const openPicker = (field: "from" | "to") => {
+    setPickerField(field);
+    setPickerOpen(true);
+  };
+  const closePicker = () => setPickerOpen(false);
+  const handleSelectAirport = (a: Airport) => {
+    const label = `${a.city} (${a.iata})`;
+    if (pickerField === "from") setFromCity(label);
+    else setToCity(label);
+    setPickerOpen(false);
+  };
 
   /** Fetch demo */
   useEffect(() => {
     setIsLoading(true);
-    // giả lập fetch
     const t = setTimeout(() => {
       setFlights(mockFlights);
       setIsLoading(false);
@@ -124,34 +167,36 @@ export default function FlightsNew() {
     return () => clearTimeout(t);
   }, []);
 
-  const parseStops = (s: string) => {
-    if (/non\s*stop/i.test(s)) return 0;
-    const m = s.match(/(\d+)/);
-    return m ? parseInt(m[1], 10) : 99;
-  };
-
-  /** Derived list */
+  /** Derived list with filters + sort */
   const visible = useMemo(() => {
-    const list = [...flights].filter((f) => f.price >= budget[0] && f.price <= budget[1]);
+    const list = flights.filter((f) => {
+      const priceOK = f.price >= filters.budget[0] && f.price <= filters.budget[1];
+      const stopOK = filters.stops.includes(parseStopsCount(f.stops));
+      const airlineOK = filters.airlines.length === 0 || filters.airlines.includes(f.airline);
+      const cabinOK = cabin === "Economy" ? true : f.class === cabin;
+      return priceOK && stopOK && airlineOK && cabinOK;
+    });
 
     switch (sortBy) {
       case "cheapest":
         list.sort((a, b) => a.price - b.price);
         break;
       case "non-stop":
-        list.sort((a, b) => parseStops(a.stops) - parseStops(b.stops) || a.price - b.price);
+        list.sort(
+          (a, b) => parseStopsCount(a.stops) - parseStopsCount(b.stops) || a.price - b.price
+        );
         break;
       case "earliest":
-        list.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
+        list.sort((a, b) => timeToMinutes(a.departureTime) - timeToMinutes(b.departureTime));
         break;
       case "latest":
-        list.sort((a, b) => b.departureTime.localeCompare(a.departureTime));
+        list.sort((a, b) => timeToMinutes(b.departureTime) - timeToMinutes(a.departureTime));
         break;
     }
     return list;
-  }, [flights, budget, sortBy]);
+  }, [flights, filters, sortBy, cabin]);
 
-  /** Pagination (nếu sau này nhiều dữ liệu) */
+  /** Pagination */
   const [page, setPage] = useState(1);
   const total = visible.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -162,14 +207,11 @@ export default function FlightsNew() {
   useEffect(() => setPage(1), [visible]);
 
   /** Events */
-  const toggleFilter = (k: FilterKey) => setFilters((p) => ({ ...p, [k]: !p[k] }));
-  const resetFilters = () => {
-    setBudget([200, 600]);
-    setFilters({
-      freeCancellation: false,
-      noPrepayment: false,
-      breakfastIncluded: false,
-      hotels: false,
+  const swapRoute = () => {
+    setFromCity((prev) => {
+      const a = toCity;
+      setToCity(prev);
+      return a;
     });
   };
   const runSearch = () => {
@@ -180,35 +222,155 @@ export default function FlightsNew() {
     }, 300);
     return () => clearTimeout(t);
   };
+  const setBudgetMin = (v: number) =>
+    setFilters((p) => ({ ...p, budget: [Math.min(v, p.budget[1] - 1), p.budget[1]] }));
+  const setBudgetMax = (v: number) =>
+    setFilters((p) => ({ ...p, budget: [p.budget[0], Math.max(v, p.budget[0] + 1)] }));
 
+  const toggleStop = (n: number) =>
+    setFilters((p) => {
+      const has = p.stops.includes(n);
+      return { ...p, stops: has ? p.stops.filter((x) => x !== n) : [...p.stops, n] };
+    });
+
+  const toggleAirline = (name: string) =>
+    setFilters((p) => {
+      const has = p.airlines.includes(name);
+      return { ...p, airlines: has ? p.airlines.filter((x) => x !== name) : [...p.airlines, name] };
+    });
+
+  /* ===================== UI ===================== */
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-slate-900">
-      {/* Top bar (sticky) */}
+      {/* ===== Top Search (sticky) ===== */}
       <header className="sticky top-0 z-30 border-b border-sky-100 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-3">
+          {/* Row 1: trip & route */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            {/* From */}
+            {/* Trip type */}
+            <div className="md:col-span-2 flex h-11 rounded-xl border border-sky-200 bg-white overflow-hidden">
+              <button
+                className={`flex-1 text-sm font-semibold ${
+                  tripType === "round"
+                    ? "bg-sky-600 text-white"
+                    : "text-slate-700 hover:bg-sky-50"
+                }`}
+                onClick={() => setTripType("round")}
+              >
+                Round trip
+              </button>
+              <button
+                className={`flex-1 text-sm font-semibold ${
+                  tripType === "oneway"
+                    ? "bg-sky-600 text-white"
+                    : "text-slate-700 hover:bg-sky-50"
+                }`}
+                onClick={() => setTripType("oneway")}
+              >
+                One way
+              </button>
+            </div>
+
+            {/* From (readOnly + icon để gợi ý click) */}
             <div className="md:col-span-3">
               <label className="text-xs font-semibold text-slate-600">From</label>
-              <input
-                className="mt-1 w-full h-11 rounded-xl border border-sky-200 bg-white px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                value={fromCity}
-                onChange={(e) => setFromCity(e.target.value)}
-                placeholder="City or airport"
-              />
+              <div className="relative mt-1">
+                <input
+                  className="w-full h-11 rounded-xl border border-sky-200 bg-white pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-200 cursor-pointer"
+                  value={fromCity}
+                  readOnly
+                  onClick={() => openPicker("from")}
+                  placeholder="City or airport"
+                />
+                <MapPin className="h-4 w-4 text-sky-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                <button
+                  onClick={() => openPicker("from")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                  aria-label="open from picker"
+                >
+                  ▾
+                </button>
+              </div>
             </div>
+
+            {/* Swap */}
+            <div className="md:col-span-1 flex items-end">
+              <button
+                onClick={swapRoute}
+                className="w-full h-11 rounded-xl border border-sky-200 bg-white text-slate-800 font-semibold hover:bg-sky-50 inline-flex items-center justify-center gap-2"
+                title="Swap"
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+                Swap
+              </button>
+            </div>
+
             {/* To */}
             <div className="md:col-span-3">
               <label className="text-xs font-semibold text-slate-600">To</label>
-              <input
-                className="mt-1 w-full h-11 rounded-xl border border-sky-200 bg-white px-3"
-                value={toCity}
-                onChange={(e) => setToCity(e.target.value)}
-                placeholder="City or airport"
-              />
+              <div className="relative mt-1">
+                <input
+                  className="w-full h-11 rounded-xl border border-sky-200 bg-white pl-10 pr-10 focus:outline-none focus:ring-2 focus:ring-sky-200 cursor-pointer"
+                  value={toCity}
+                  readOnly
+                  onClick={() => openPicker("to")}
+                  placeholder="City or airport"
+                />
+                <MapPin className="h-4 w-4 text-sky-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                <button
+                  onClick={() => openPicker("to")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500"
+                  aria-label="open to picker"
+                >
+                  ▾
+                </button>
+              </div>
             </div>
-            {/* Dates */}
+
+            {/* Pax & cabin */}
             <div className="md:col-span-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Passengers</label>
+                <div className="mt-1 h-11 rounded-xl border border-sky-200 bg-white px-2 flex items-center justify-between">
+                  <button
+                    onClick={() => setPax((n) => Math.max(1, n - 1))}
+                    className="p-2 rounded-lg hover:bg-sky-50"
+                    aria-label="decrease passengers"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <span className="font-semibold inline-flex items-center gap-1">
+                    <Users className="h-4 w-4" /> {pax}
+                  </span>
+                  <button
+                    onClick={() => setPax((n) => n + 1)}
+                    className="p-2 rounded-lg hover:bg-sky-50"
+                    aria-label="increase passengers"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600">Cabin</label>
+                <select
+                  className="mt-1 w-full h-11 rounded-xl border border-sky-200 bg-white px-3"
+                  value={cabin}
+                  onChange={(e) => setCabin(e.target.value as CabinClass)}
+                >
+                  <option>Economy</option>
+                  <option>Premium Economy</option>
+                  <option>Business</option>
+                  <option>First</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: dates & actions */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            {/* Dates */}
+            <div className="md:col-span-6 grid grid-cols-2 gap-2">
               <div>
                 <label className="text-xs font-semibold text-slate-600">Depart</label>
                 <div className="relative mt-1">
@@ -226,32 +388,40 @@ export default function FlightsNew() {
                 <div className="relative mt-1">
                   <input
                     type="date"
-                    className="w-full h-11 rounded-xl border border-sky-200 bg-white px-3 pr-8"
+                    className="w-full h-11 rounded-xl border border-sky-200 bg-white px-3 pr-8 disabled:opacity-50"
                     value={ret}
                     onChange={(e) => setRet(e.target.value)}
+                    disabled={tripType === "oneway"}
                   />
                   <Calendar className="h-4 w-4 text-sky-500 absolute right-2 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
             </div>
-            {/* Pax */}
-            <div className="md:col-span-2">
-              <label className="text-xs font-semibold text-slate-600">Passengers</label>
-              <div className="mt-1 h-11 rounded-xl border border-sky-200 bg-white px-2 flex items-center justify-between">
-                <button onClick={() => setPax((n) => Math.max(1, n - 1))} className="p-2 rounded-lg hover:bg-sky-50">
-                  <Minus className="h-4 w-4" />
+
+            {/* Quick filters (Stops) */}
+            <div className="md:col-span-3 flex items-end gap-2">
+              {[0, 1, 2].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => toggleStop(n)}
+                  className={[
+                    "h-11 flex-1 rounded-xl border text-sm font-semibold",
+                    filters.stops.includes(n)
+                      ? "border-sky-600 bg-sky-600 text-white"
+                      : "border-sky-200 bg-white text-slate-700 hover:bg-sky-50",
+                  ].join(" ")}
+                  title={n === 0 ? "Non-stop" : n === 1 ? "1 Stop" : "2+ Stops"}
+                >
+                  {n === 0 ? "Non-stop" : n === 1 ? "1 Stop" : "2+ Stops"}
                 </button>
-                <span className="font-semibold">{pax}</span>
-                <button onClick={() => setPax((n) => n + 1)} className="p-2 rounded-lg hover:bg-sky-50">
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
+              ))}
             </div>
+
             {/* Actions */}
-            <div className="md:col-span-1 flex gap-2 items-end">
+            <div className="md:col-span-3 flex gap-2 items-end">
               <button
-                onClick={() => setFilterOpen(true)}
                 className="h-11 flex-1 rounded-xl border border-sky-200 bg-white text-slate-800 font-semibold hover:bg-sky-50 inline-flex items-center justify-center gap-2"
+                onClick={() => alert("Open advanced filters panel")}
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Filters
@@ -260,125 +430,123 @@ export default function FlightsNew() {
                 onClick={runSearch}
                 className="h-11 flex-1 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600 inline-flex items-center justify-center gap-2"
               >
-                <Search className="h-4 w-4" />
+                <SearchIcon className="h-4 w-4" />
                 Search
               </button>
             </div>
           </div>
 
-          {/* Chips row */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <SortChip label="Cheapest" active={sortBy === "cheapest"} onClick={() => setSortBy("cheapest")} />
-            <SortChip label="Non-stop first" active={sortBy === "non-stop"} onClick={() => setSortBy("non-stop")} />
-            <SortChip label="Earliest" active={sortBy === "earliest"} onClick={() => setSortBy("earliest")} />
-            <SortChip label="Latest" active={sortBy === "latest"} onClick={() => setSortBy("latest")} />
-            <div className="ml-auto text-slate-500">
-              {fromCity} → {toCity}
+          {/* Sort & route summary */}
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <SortChip
+              label="Cheapest"
+              active={sortBy === "cheapest"}
+              onClick={() => setSortBy("cheapest")}
+            />
+            <SortChip
+              label="Non-stop first"
+              active={sortBy === "non-stop"}
+              onClick={() => setSortBy("non-stop")}
+            />
+            <SortChip
+              label="Earliest"
+              active={sortBy === "earliest"}
+              onClick={() => setSortBy("earliest")}
+            />
+            <SortChip
+              label="Latest"
+              active={sortBy === "latest"}
+              onClick={() => setSortBy("latest")}
+            />
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-slate-500">
+                {fromCity} → {toCity} • {pax} pax •{" "}
+                <span className="inline-flex items-center gap-1">
+                  <Briefcase className="h-3 w-3" /> {cabin}
+                </span>
+              </span>
+              <select
+                className="h-9 rounded-lg border border-sky-200 bg-white px-2 text-slate-700"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                aria-label="Sort results"
+              >
+                <option value="cheapest">Sort: Cheapest</option>
+                <option value="non-stop">Sort: Non-stop first</option>
+                <option value="earliest">Sort: Earliest</option>
+                <option value="latest">Sort: Latest</option>
+              </select>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Content */}
+      {/* ===== Content ===== */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Sidebar (desktop) */}
-          <aside className="hidden lg:block lg:col-span-3">
-            <FilterPanel
-              budget={budget}
-              setBudget={setBudget}
-              filters={filters}
-              toggleFilter={toggleFilter}
-              reset={resetFilters}
-            />
-          </aside>
-
-          {/* Results */}
-          <section className="lg:col-span-9 space-y-4">
+        {isLoading ? (
+          <ResultsSkeleton />
+        ) : total === 0 ? (
+          <EmptyState onReset={runSearch} />
+        ) : (
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="text-slate-600">
                 Found <span className="font-semibold text-slate-900">{total}</span> flights
               </div>
-              <div className="text-sm text-slate-500">Budget: ${budget[0]}–${budget[1]}</div>
+              <div className="text-sm text-slate-500">
+                Budget: ${filters.budget[0]}–${filters.budget[1]}
+              </div>
             </div>
 
-            {isLoading ? (
-              <div className="rounded-2xl border border-sky-100 bg-white/70 p-10 grid place-items-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-sky-600" />
-              </div>
-            ) : total === 0 ? (
-              <EmptyState onReset={runSearch} />
-            ) : (
-              <>
-                {pageList.map((f) => (
-                  <FlightCard
-                    key={f.id}
-                    f={f}
-                    expanded={expanded === f.id}
-                    onToggle={() => setExpanded((id) => (id === f.id ? null : f.id))}
-                    parseStops={parseStops}
-                  />
-                ))}
+            {pageList.map((f) => (
+              <FlightCard
+                key={f.id}
+                f={f}
+                expanded={expanded === f.id}
+                onToggle={() => setExpanded((id) => (id === f.id ? null : f.id))}
+                onBook={() =>
+                  navigate(`/flights/${f.id}`, {
+                    state: {
+                      flight: f,
+                      search: { fromCity, toCity, depart, ret, pax, cabin, tripType },
+                    },
+                  })
+                }
+              />
+            ))}
 
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
-                    >
-                      Previous
-                    </button>
-                    <div className="text-sm">
-                      Page <span className="font-semibold">{page}</span> / {totalPages}
-                    </div>
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                      className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
+                >
+                  Previous
+                </button>
+                <div className="text-sm">
+                  Page <span className="font-semibold">{page}</span> / {totalPages}
+                </div>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="h-10 px-4 rounded-xl border border-sky-200 text-sm font-medium text-slate-700 disabled:opacity-40 hover:bg-sky-50"
+                >
+                  Next
+                </button>
+              </div>
             )}
-          </section>
-        </div>
+          </div>
+        )}
       </main>
 
-      {/* Filter Drawer (mobile & tablet) */}
-      {filterOpen && (
-        <div className="fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setFilterOpen(false)} />
-          <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-lg font-bold">Filters</h3>
-              <button onClick={() => setFilterOpen(false)} className="p-2 rounded-lg hover:bg-slate-100">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="p-4 overflow-y-auto h-[calc(100%-64px-64px)]">
-              <FilterPanel
-                budget={budget}
-                setBudget={setBudget}
-                filters={filters}
-                toggleFilter={toggleFilter}
-                reset={resetFilters}
-              />
-            </div>
-            <div className="p-4 border-t border-slate-200">
-              <button
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600"
-                onClick={() => setFilterOpen(false)}
-              >
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ===== Location Picker (popup) ===== */}
+      <LocationPicker
+        open={pickerOpen}
+        field={pickerField}
+        onClose={closePicker}
+        onSelect={handleSelectAirport}
+      />
     </div>
   );
 }
@@ -409,111 +577,16 @@ function SortChip({
   );
 }
 
-function FilterPanel({
-  budget,
-  setBudget,
-  filters,
-  toggleFilter,
-  reset,
-}: {
-  budget: [number, number];
-  setBudget: (v: [number, number]) => void;
-  filters: Filters;
-  toggleFilter: (k: FilterKey) => void;
-  reset: () => void;
-}) {
-  const [openBudget, setOpenBudget] = useState(true);
-  const [openPopular, setOpenPopular] = useState(true);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h4 className="text-xl font-bold">Refine</h4>
-        <button onClick={reset} className="text-sm text-sky-700 hover:text-sky-900 font-medium">
-          Reset
-        </button>
-      </div>
-
-      {/* Budget */}
-      <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <button
-          onClick={() => setOpenBudget((v) => !v)}
-          className="flex items-center justify-between w-full"
-        >
-          <span className="font-semibold text-slate-900">Budget</span>
-          {openBudget ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-        </button>
-        {openBudget && (
-          <div className="mt-4">
-            <input
-              type="range"
-              min={100}
-              max={1000}
-              value={budget[1]}
-              onChange={(e) => setBudget([budget[0], parseInt(e.target.value, 10)])}
-              className="w-full accent-sky-600"
-            />
-            <div className="mt-2 flex justify-between text-sm font-medium text-slate-900">
-              <span>${budget[0]}</span>
-              <span>${budget[1]}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Popular */}
-      <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <button
-          onClick={() => setOpenPopular((v) => !v)}
-          className="flex items-center justify-between w-full"
-        >
-          <span className="font-semibold text-slate-900">Popular</span>
-          {openPopular ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-        </button>
-
-        {openPopular && (
-          <div className="mt-4 space-y-3 text-sm">
-            {([
-              { k: "freeCancellation", label: "Free cancellation" },
-              { k: "noPrepayment", label: "No prepayment" },
-              { k: "breakfastIncluded", label: "Breakfast included" },
-              { k: "hotels", label: "Show hotels" },
-            ] as { k: FilterKey; label: string }[]).map(({ k, label }) => (
-              <label key={k} className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="w-5 h-5 rounded border-slate-300 text-sky-600 focus:ring-sky-600"
-                  checked={filters[k]}
-                  onChange={() => toggleFilter(k)}
-                />
-                <span className="text-slate-700">{label}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Tip */}
-      <div className="rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50 to-cyan-50 p-5">
-        <div className="font-semibold text-slate-900">Travel tip</div>
-        <p className="text-sm text-slate-600 mt-1">
-          Flying before 9:00 can save on average 10–15% on popular routes.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function FlightCard({
   f,
   expanded,
   onToggle,
-  parseStops,
+  onBook,
 }: {
   f: Flight;
   expanded: boolean;
   onToggle: () => void;
-  parseStops: (s: string) => number;
+  onBook: () => void;
 }) {
   return (
     <div className="rounded-3xl border border-sky-100 bg-white shadow-sm overflow-hidden">
@@ -539,20 +612,20 @@ function FlightCard({
           </div>
           <div className="flex items-center gap-2">
             <Badge>{f.class}</Badge>
-            <Badge>{parseStops(f.stops) === 0 ? "Direct" : f.stops}</Badge>
+            <Badge>{parseStopsCount(f.stops) === 0 ? "Direct" : f.stops}</Badge>
           </div>
         </div>
 
         {/* Timeline */}
         <div className="mt-5 flex items-center justify-between text-slate-700">
           <div>
-            <div className="text-xs text-slate-500 mb-1">Wed, 21 Jun</div>
+            <div className="text-xs text-slate-500 mb-1">Depart</div>
             <div className="flex items-center gap-2">
               <span className="text-2xl font-bold">{f.departureTime}</span>
               <span className="text-slate-600">{f.from}</span>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2 flex-1 px-6">
+        <div className="hidden md:flex items-center gap-2 flex-1 px-6">
             <div className="h-px w-full border-t border-dotted border-slate-300" />
             <div className="h-10 w-10 rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 text-white grid place-items-center shadow">
               <Plane className="h-5 w-5 -rotate-90" />
@@ -560,7 +633,7 @@ function FlightCard({
             <div className="h-px w-full border-t border-dotted border-slate-300" />
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-500 mb-1">Thu, 22 Jun</div>
+            <div className="text-xs text-slate-500 mb-1">Arrive</div>
             <div className="flex items-center gap-2 justify-end">
               <span className="text-2xl font-bold">{f.arrivalTime}</span>
               <span className="text-slate-600">{f.to}</span>
@@ -581,7 +654,10 @@ function FlightCard({
             >
               {expanded ? "Hide details" : "Select flight"}
             </button>
-            <button className="px-5 h-11 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600">
+            <button
+              onClick={onBook}
+              className="px-5 h-11 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-white font-bold hover:from-sky-600 hover:to-cyan-600"
+            >
               Book
             </button>
           </div>
@@ -632,6 +708,131 @@ function EmptyState({ onReset }: { onReset: () => void }) {
       >
         Try again
       </button>
+    </div>
+  );
+}
+
+function ResultsSkeleton() {
+  return (
+    <div className="space-y-3 max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="rounded-3xl border border-sky-100 bg-white p-5">
+          <div className="animate-pulse space-y-4">
+            <div className="h-4 bg-slate-200 rounded w-1/3" />
+            <div className="h-4 bg-slate-200 rounded w-2/3" />
+            <div className="h-32 bg-slate-100 rounded" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ===================== LocationPicker ===================== */
+
+function LocationPicker({
+  open,
+  field,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  field: "from" | "to";
+  onClose: () => void;
+  onSelect: (a: Airport) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [activeRegion, setActiveRegion] = useState<RegionKey>("VIETNAM");
+
+  const grouped = useMemo(() => groupAirportsByRegion(AIRPORTS), []);
+  const regions = Object.keys(grouped) as RegionKey[];
+
+  const normalize = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .toLowerCase();
+
+  const list = useMemo(() => {
+    const base = grouped[activeRegion] || [];
+    if (!query.trim()) return base;
+    const q = normalize(query);
+    return base.filter((a) =>
+      [a.iata, a.city, a.name, a.country].map(normalize).some((v) => v.includes(q))
+    );
+  }, [grouped, activeRegion, query]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
+      <div className="absolute left-1/2 top-20 -translate-x-1/2 w-[min(960px,95vw)] h-[70vh] bg-white rounded-2xl shadow-xl grid grid-rows-[48px_1fr]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-5">
+          <div className="font-semibold text-slate-800 py-3">
+            {field === "from" ? "Chọn điểm đi" : "Chọn điểm đến"}
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X className="h-5 w-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="grid grid-cols-[220px_1fr] overflow-hidden">
+          {/* Left region list */}
+          <aside className="border-r border-slate-200 overflow-y-auto">
+            {regions.map((r) => (
+              <button
+                key={r}
+                onClick={() => setActiveRegion(r)}
+                className={`w-full px-4 py-3 border-b text-left font-semibold ${
+                  activeRegion === r ? "bg-sky-600 text-white" : "hover:bg-sky-50 text-slate-800"
+                }`}
+              >
+                {REGION_LABEL[r]}
+              </button>
+            ))}
+          </aside>
+
+          {/* Right airport list */}
+          <section className="p-5 flex flex-col overflow-hidden">
+            <div className="relative mb-3">
+              <input
+                className="w-full h-10 rounded-lg border border-slate-200 pl-9 pr-3 outline-none focus:ring-2 focus:ring-sky-200"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Tìm kiếm theo tên thành phố hoặc mã sân bay..."
+              />
+              <SearchIcon className="h-4 w-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {list.map((a) => (
+                <button
+                  key={a.iata + a.city}
+                  onClick={() => onSelect(a)}
+                  className="w-full px-3 py-2 text-left hover:bg-sky-50 border-b border-slate-100"
+                >
+                  <div className="font-semibold text-slate-900">
+                    {a.city} ({a.iata})
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {a.name}, {a.country}
+                  </div>
+                </button>
+              ))}
+              {list.length === 0 && (
+                <div className="text-sm text-slate-500 text-center py-6">
+                  Không có kết quả phù hợp.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

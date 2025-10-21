@@ -21,8 +21,8 @@ export default function Profile() {
     updateProfile,
     requestPasswordChangeCode,
     changePassword,
-    requestAccountDeletionCode,   // <-- THÊM
-    deleteAccount,                // <-- THÊM
+    requestAccountDeletionCode,  
+    deleteAccount,                
     isBootstrapping,
   } = useAuthStore();
 
@@ -289,20 +289,16 @@ export default function Profile() {
     e.preventDefault();
     if (isDeleting) return;
 
-    if (!window.confirm("This action is irreversible. Delete account?")) {
-      return;
-    }
-
     setDeleteError("");
     setDeleteSuccess("");
     setIsDeleting(true);
 
     try {
       await deleteAccount({ code: deleteCode.trim() });
-      setDeleteSuccess("Your account has been deleted. Redirecting...");
-      setTimeout(() => {
-        window.location.href = "/";
-      }, 1500);
+      // Suggestion: store nên clear auth state và điều hướng ra trang login/home
+      setDeleteSuccess("Your account has been deleted.");
+      // Tuỳ chọn: redirect ngay
+      // window.location.href = "/";
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
         setDeleteError(error.response?.data?.message ?? "Unable to delete account right now.");
