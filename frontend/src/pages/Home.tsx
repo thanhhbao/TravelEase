@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, MapPin, Calendar, User, Star, ArrowRight, Plane, Anchor, Ship } from "lucide-react";
+import { AIRPORTS } from "../data/airports";
+import type { Airport } from "../data/airports";
 
 // --- Types ---
 type FeaturedHotel = {
@@ -156,11 +158,89 @@ export default function Home() {
   const [toCity, setToCity] = useState("");
   const [featuredHotels, setFeaturedHotels] = useState<FeaturedHotel[]>([]);
 
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState<Airport[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+  const suggestionsRef = useRef<HTMLDivElement | null>(null);
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
+  const fromInputRef = useRef<HTMLInputElement | null>(null);
+  const toInputRef = useRef<HTMLInputElement | null>(null);
+  const [activeField, setActiveField] = useState<"location" | "from" | "to" | null>(null);
+
   const scrollY = useScrollAnimation();
 
   useEffect(() => {
     setFeaturedHotels(mockHotels);
   }, []);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const el = suggestionsRef.current;
+      const inputEl = locationInputRef.current;
+      const fromEl = fromInputRef.current;
+      const toEl = toInputRef.current;
+      if (!el || !inputEl) return;
+      if (
+        e.target instanceof Node &&
+        !el.contains(e.target) &&
+        !inputEl.contains(e.target) &&
+        !(fromEl && fromEl.contains(e.target)) &&
+        !(toEl && toEl.contains(e.target))
+      ) {
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
+  const updateSuggestions = (value: string) => {
+    const q = value.trim().toLowerCase();
+    if (!q) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+      return;
+    }
+
+    const filtered = AIRPORTS.filter((a) => {
+      return (
+        a.city.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        a.country.toLowerCase().includes(q) ||
+        a.iata.toLowerCase().includes(q)
+      );
+    }).slice(0, 8);
+
+    setSuggestions(filtered);
+    setShowSuggestions(filtered.length > 0);
+    setSelectedIndex(-1);
+  };
+
+  const handleLocationKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+        const s = suggestions[selectedIndex];
+        const label = `${s.city}${s.name ? ` - ${s.name}` : ""}, ${s.country}`;
+        setLocation(label);
+        setShowSuggestions(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+      setSelectedIndex(-1);
+    }
+  };
 
   const handleSearch = () => {
     if (searchType === "hotels") {
@@ -323,13 +403,56 @@ export default function Home() {
                         <label className="flex items-center text-sky-50 font-medium text-sm">
                           <MapPin className="w-4 h-4 mr-2" /> Location
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Where to? (e.g., Nha Trang)"
-                          value={location}
-                          onChange={(e) => setLocation(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
-                        />
+                        <div className="relative">
+                          <input
+                            ref={locationInputRef}
+                            type="text"
+                            placeholder="Where to? (e.g., Nha Trang)"
+                            value={location}
+                            onChange={(e) => {
+                              setLocation(e.target.value);
+                              updateSuggestions(e.target.value);
+                            }}
+                            onFocus={(e) => updateSuggestions(e.currentTarget.value)}
+                            onKeyDown={handleLocationKeyDown}
+                            className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
+                          />
+
+                          {/* Suggestions dropdown */}
+                          {showSuggestions && (
+                          <div
+                            ref={suggestionsRef}
+                            className="absolute z-50 left-0 mt-2 w-full max-w-full bg-white rounded-xl shadow-lg border border-sky-100 max-h-64 overflow-auto translate-y-0.5"
+                            style={{ transformOrigin: "top left" }}
+                          >
+                              {suggestions.map((s, i) => {
+                                const label = `${s.city}${s.name ? ` - ${s.name}` : ""}, ${s.country}`;
+                                const active = i === selectedIndex;
+                                return (
+                                  <button
+                                    key={s.iata + i}
+                                    onMouseDown={(ev) => {
+                                      // use onMouseDown to prevent blur before click
+                                      ev.preventDefault();
+                                      setLocation(label);
+                                      setShowSuggestions(false);
+                                    }}
+                                    onMouseEnter={() => setSelectedIndex(i)}
+                                    className={`w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center gap-3 ${
+                                      active ? "bg-sky-50" : ""
+                                    }`}
+                                  >
+                                    <div className="w-10 text-slate-700 font-semibold">{s.iata}</div>
+                                    <div className="flex-1">
+                                      <div className="font-medium text-slate-900">{label}</div>
+                                      <div className="text-sm text-slate-500">{s.name}</div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -385,26 +508,120 @@ export default function Home() {
                         <label className="flex items-center text-sky-50 font-medium text-sm">
                           <MapPin className="w-4 h-4 mr-2" /> From
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Departure city"
-                          value={fromCity}
-                          onChange={(e) => setFromCity(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
-                        />
+                        <div className="relative">
+                          <input
+                            ref={fromInputRef}
+                            type="text"
+                            placeholder="Departure city"
+                            value={fromCity}
+                            onChange={(e) => {
+                              setFromCity(e.target.value);
+                              updateSuggestions(e.target.value);
+                              setActiveField("from");
+                            }}
+                            onFocus={(e) => {
+                              updateSuggestions(e.currentTarget.value);
+                              setActiveField("from");
+                            }}
+                            onKeyDown={(e) => {
+                              handleLocationKeyDown(e as any);
+                            }}
+                            className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
+                          />
+                          {/* Suggestions dropdown for From field */}
+                          {showSuggestions && activeField === "from" && (
+                            <div
+                              ref={suggestionsRef}
+                              className="absolute z-50 left-0 mt-2 w-full max-w-full bg-white rounded-xl shadow-lg border border-sky-100 max-h-64 overflow-auto translate-y-0.5"
+                              style={{ transformOrigin: "top left" }}
+                            >
+                              {suggestions.map((s, i) => {
+                                const label = `${s.city}${s.name ? ` - ${s.name}` : ""}, ${s.country}`;
+                                const active = i === selectedIndex;
+                                return (
+                                  <button
+                                    key={s.iata + i}
+                                    onMouseDown={(ev) => {
+                                      ev.preventDefault();
+                                      setFromCity(label);
+                                      setShowSuggestions(false);
+                                    }}
+                                    onMouseEnter={() => setSelectedIndex(i)}
+                                    className={`w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center gap-3 ${
+                                      active ? "bg-sky-50" : ""
+                                    }`}
+                                  >
+                                    <div className="w-10 text-slate-700 font-semibold">{s.iata}</div>
+                                    <div className="flex-1">
+                                      <div className="font-medium text-slate-900">{label}</div>
+                                      <div className="text-sm text-slate-500">{s.name}</div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-2">
                         <label className="flex items-center text-sky-50 font-medium text-sm">
                           <MapPin className="w-4 h-4 mr-2" /> To
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Arrival city"
-                          value={toCity}
-                          onChange={(e) => setToCity(e.target.value)}
-                          className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
-                        />
+                        <div className="relative">
+                          <input
+                            ref={toInputRef}
+                            type="text"
+                            placeholder="Arrival city"
+                            value={toCity}
+                            onChange={(e) => {
+                              setToCity(e.target.value);
+                              updateSuggestions(e.target.value);
+                              setActiveField("to");
+                            }}
+                            onFocus={(e) => {
+                              updateSuggestions(e.currentTarget.value);
+                              setActiveField("to");
+                            }}
+                            onKeyDown={(e) => {
+                              handleLocationKeyDown(e as any);
+                            }}
+                            className="w-full px-4 py-3 rounded-xl bg-white/95 border border-sky-200 focus:border-sky-400 focus:ring-2 focus:ring-sky-200 outline-none transition"
+                          />
+                          {/* Suggestions dropdown for To field */}
+                          {showSuggestions && activeField === "to" && (
+                            <div
+                              ref={suggestionsRef}
+                              className="absolute z-50 left-0 mt-2 w-full max-w-full bg-white rounded-xl shadow-lg border border-sky-100 max-h-64 overflow-auto translate-y-0.5"
+                              style={{ transformOrigin: "top left" }}
+                            >
+                              {suggestions.map((s, i) => {
+                                const label = `${s.city}${s.name ? ` - ${s.name}` : ""}, ${s.country}`;
+                                const active = i === selectedIndex;
+                                return (
+                                  <button
+                                    key={s.iata + i}
+                                    onMouseDown={(ev) => {
+                                      ev.preventDefault();
+                                      setToCity(label);
+                                      setShowSuggestions(false);
+                                    }}
+                                    onMouseEnter={() => setSelectedIndex(i)}
+                                    className={`w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center gap-3 ${
+                                      active ? "bg-sky-50" : ""
+                                    }`}
+                                  >
+                                    <div className="w-10 text-slate-700 font-semibold">{s.iata}</div>
+                                    <div className="flex-1">
+                                      <div className="font-medium text-slate-900">{label}</div>
+                                      <div className="text-sm text-slate-500">{s.name}</div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-2">
@@ -456,7 +673,8 @@ export default function Home() {
                   onClick={handleSearch}
                   className=" btn-primary mt-6 w-full md:w-auto font-extrabold px-8 py-4 rounded-3xl shadow-xl hover:shadow-2xl focus:outline-none focus:ring-4 inline-flex items-center justify-center gap-3"
                 >
-                  <Search className="" /> Search Now
+                  <Search className="" />
+                  {(!showSuggestions || activeField === "to") && <span>Search Now</span>}
                 </motion.button>
               </div>
             </div>
