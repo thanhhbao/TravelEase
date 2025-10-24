@@ -7,8 +7,6 @@ import {
   Plus,
   SlidersHorizontal,
   X,
-  ChevronDown,
-  ChevronUp,
   ArrowLeftRight,
   Users,
   Briefcase,
@@ -49,7 +47,6 @@ type Filters = {
   budget: [number, number];
 };
 
-const ALL_AIRLINES = ["Garuda Indonesia", "Qatar Airways", "Emirates"];
 const PAGE_SIZE = 8;
 
 /* ===================== Mock demo ===================== */
@@ -222,28 +219,17 @@ export default function Flights() {
     }, 300);
     return () => clearTimeout(t);
   };
-  const setBudgetMin = (v: number) =>
-    setFilters((p) => ({ ...p, budget: [Math.min(v, p.budget[1] - 1), p.budget[1]] }));
-  const setBudgetMax = (v: number) =>
-    setFilters((p) => ({ ...p, budget: [p.budget[0], Math.max(v, p.budget[0] + 1)] }));
+const toggleStop = (n: number) =>
+  setFilters((p) => {
+    const has = p.stops.includes(n);
+    return { ...p, stops: has ? p.stops.filter((x) => x !== n) : [...p.stops, n] };
+  });
 
-  const toggleStop = (n: number) =>
-    setFilters((p) => {
-      const has = p.stops.includes(n);
-      return { ...p, stops: has ? p.stops.filter((x) => x !== n) : [...p.stops, n] };
-    });
-
-  const toggleAirline = (name: string) =>
-    setFilters((p) => {
-      const has = p.airlines.includes(name);
-      return { ...p, airlines: has ? p.airlines.filter((x) => x !== name) : [...p.airlines, name] };
-    });
-
-  /* ===================== UI ===================== */
+/* ===================== UI ===================== */
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-slate-900">
       {/* ===== Top Search (sticky) ===== */}
-      <header className="sticky top-0 z-30 border-b border-sky-100 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <header className="sticky top-0 z-30 border-b border-sky-100 bg-sky-50/90 backdrop-blur supports-[backdrop-filter]:bg-sky-50/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-3">
           {/* Row 1: trip & route */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3">

@@ -1,6 +1,18 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Check, CreditCard, Lock, Headphones, MapPin, Star } from "lucide-react";
+import { motion } from "framer-motion";
+import {
+  Check,
+  CreditCard,
+  Lock,
+  Headphones,
+  MapPin,
+  Star,
+  ShieldCheck,
+  Wallet,
+  Gift,
+} from "lucide-react";
+import { ScrollStack } from "../../components/ScrollStack";
 
 type LocationState = {
   hotelId: number;
@@ -47,6 +59,154 @@ export default function Checkout() {
   const bookingFee = 12; // demo
   const subtotal = useMemo(() => data.totalPrice, [data.totalPrice]);
   const grandTotal = useMemo(() => subtotal + bookingFee, [subtotal]);
+
+  const walletOptions = [
+    { id: "paypal", label: "PayPal", description: "Link to your PayPal account for one-click checkout." },
+    { id: "apple-pay", label: "Apple Pay", description: "Secure payments across your Apple devices." },
+    { id: "google-pay", label: "Google Pay", description: "Fast checkout with your saved cards." },
+  ];
+
+  const paymentStackItems = [
+    {
+      id: "card",
+      content: (
+        <motion.div
+          whileHover={{ translateY: -4, scale: 1.01 }}
+          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-8 shadow-xl text-slate-900"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
+                Primary method
+              </p>
+              <h4 className="mt-2 text-2xl font-semibold">Credit / Debit Card</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Enter your card credentials securely. We accept major cards worldwide.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {["VISA", "MC", "AMEX"].map((logo) => (
+                <span
+                  key={logo}
+                  className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.3em] text-slate-600"
+                >
+                  {logo}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <Input
+              label="Card Number"
+              placeholder="4242 4242 4242 4242"
+              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
+            />
+            <Input
+              label="Name on Card"
+              placeholder="Your name"
+              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
+            />
+            <Input
+              label="Expiry"
+              placeholder="MM/YY"
+              className="md:col-span-1"
+              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
+            />
+            <Input
+              label="CVC"
+              placeholder="CVC"
+              className="md:col-span-1"
+              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
+            />
+          </div>
+
+          <p className="mt-5 text-xs text-slate-500 flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+            Protected by 256-bit SSL encryption and PSD2 compliant security layers.
+          </p>
+        </motion.div>
+      ),
+    },
+    {
+      id: "wallets",
+      content: (
+        <motion.div
+          whileHover={{ translateY: -4, scale: 1.01 }}
+          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-7 shadow-xl text-slate-900"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
+                Express checkout
+              </p>
+              <h4 className="mt-2 text-xl font-semibold">Digital Wallets</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Connect an existing wallet for instant approval and one-tap authentication.
+              </p>
+            </div>
+            <Wallet className="h-10 w-10 text-sky-500" />
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {walletOptions.map((wallet) => (
+              <button
+                key={wallet.id}
+                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-4 text-left text-sm font-semibold text-slate-700 hover:bg-white transition"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span>{wallet.label}</span>
+                  <span className="text-xs uppercase tracking-[0.3em] text-sky-500">
+                    Connect
+                  </span>
+                </div>
+                <p className="mt-1 text-xs font-normal text-slate-500">
+                  {wallet.description}
+                </p>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      ),
+    },
+    {
+      id: "perks",
+      content: (
+        <motion.div
+          whileHover={{ translateY: -4, scale: 1.01 }}
+          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-7 shadow-xl text-slate-900"
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
+                TravelEase bonus
+              </p>
+              <h4 className="mt-2 text-xl font-semibold">Rewards & protection</h4>
+              <p className="mt-1 text-sm text-slate-600">
+                Activate exclusive perks with every booking and enjoy zero-fee cancellations.
+              </p>
+            </div>
+            <Gift className="h-9 w-9 text-sky-500" />
+          </div>
+
+          <ul className="mt-6 space-y-3 text-sm text-slate-600">
+            <li className="flex items-start gap-3">
+              <Check className="h-5 w-5 text-emerald-500" />
+              <span>Earn 3x TravelEase reward points on premium rooms and suites.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Check className="h-5 w-5 text-emerald-500" />
+              <span>Instant lounge access vouchers on stays over $500.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Check className="h-5 w-5 text-emerald-500" />
+              <span>Automatic trip protection with real-time concierge support.</span>
+            </li>
+          </ul>
+        </motion.div>
+      ),
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-white">
@@ -128,43 +288,47 @@ export default function Checkout() {
 
           {step === 2 && (
             <div className="mt-8 space-y-8">
-              {/* Payment Detail */}
-              <Section title="Payment Detail">
-                {/* ----- Stripe slot ----- */}
-                {/* 
-                  Khi tích hợp thật, bọc trang ở cấp cao hơn:
-                  
-                  import {Elements} from '@stripe/react-stripe-js';
-                  <Elements stripe={stripePromise} options={{appearance:{theme:'stripe'}}}>
-                    <Checkout />
-                  </Elements>
-
-                  Và ở đây render:
-                  <PaymentElement /> hoặc <CardElement />
-                  Bạn vẫn giữ nguyên layout/viền/heading bên ngoài, 
-                  Stripe phần tử tự chiếm chỗ bên trong.
-                */}
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <div className="flex items-center gap-2 text-slate-800 mb-3">
-                    <CreditCard className="h-5 w-5" />
-                    <span className="font-semibold">Card Information</span>
-                  </div>
-
-                  {/* Placeholder UI (demo) */}
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Input label="Card Number" placeholder="4242 4242 4242 4242" />
-                    <Input label="Name on Card" placeholder="Your name" />
-                    <div className="grid grid-cols-2 gap-3 md:col-span-2">
-                      <Input label="Expiry" placeholder="MM/YY" />
-                      <Input label="CVC" placeholder="CVC" />
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/5 px-3 py-1 text-xs font-semibold text-slate-600">
+                      <CreditCard className="h-3.5 w-3.5" />
+                      Payment Detail
                     </div>
+                    <h3 className="mt-3 text-2xl font-semibold text-slate-900">
+                      Choose how you want to pay
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Scroll through the stack to preview each option. When you integrate Stripe or
+                      another provider, drop the component inside the glass card.
+                    </p>
                   </div>
-
-                  <p className="mt-3 text-xs text-slate-500 flex items-center gap-1">
-                    <Lock className="h-4 w-4" /> Your payment is secured with SSL encryption.
-                  </p>
+                  <div className="text-xs uppercase tracking-[0.35em] text-slate-400">
+                    Scroll to explore
+                  </div>
                 </div>
-              </Section>
+
+                <div className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-sky-100 via-white to-cyan-100 p-6 md:p-8 text-slate-900 shadow-2xl">
+                  <div className="absolute inset-0 pointer-events-none opacity-70 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.45),_transparent_55%)]" />
+                  <div className="absolute -bottom-32 left-16 h-56 w-56 rounded-full bg-sky-200/60 blur-3xl pointer-events-none" />
+                  <div className="absolute -top-28 right-10 h-56 w-56 rounded-full bg-cyan-200/50 blur-3xl pointer-events-none" />
+
+                  <div className="relative">
+                    <ScrollStack
+                      items={paymentStackItems}
+                      topOffset={24}
+                      cardHeight={340}
+                      overlapOffset={72}
+                      motion="slide"
+                    />
+                  </div>
+                </div>
+
+                <p className="flex items-center gap-2 text-xs text-slate-500">
+                  <Lock className="h-4 w-4 text-emerald-500" />
+                  TravelEase uses tokenized payments and never stores your full card details.
+                </p>
+              </div>
 
               <div className="flex items-center gap-3">
                 <button
@@ -334,19 +498,34 @@ function Input({
   placeholder,
   type = "text",
   className = "",
+  variant = "default",
+  inputClassName = "",
 }: {
   label: string;
   placeholder?: string;
   type?: string;
   className?: string;
+  variant?: "default" | "glass";
+  inputClassName?: string;
 }) {
+  const isGlass = variant === "glass";
   return (
     <label className={`block ${className}`}>
-      <div className="text-sm font-medium text-slate-700 mb-1">{label}</div>
+      <div
+        className={`text-sm font-medium mb-1 ${
+          isGlass ? "text-white/80" : "text-slate-700"
+        }`}
+      >
+        {label}
+      </div>
       <input
         type={type}
         placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+        className={`w-full px-4 py-3 rounded-xl border focus:outline-none transition ${inputClassName} ${
+          isGlass
+            ? "border-white/20 bg-white/10 text-white placeholder:text-white/60 focus:ring-2 focus:ring-white/40 focus:border-white/60"
+            : "border-slate-200 focus:ring-2 focus:ring-slate-900/10"
+        }`}
       />
     </label>
   );
