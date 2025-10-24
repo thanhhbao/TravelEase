@@ -165,6 +165,14 @@
   .animate-delay-500 {
     animation-delay: 500ms;
   }
+
+  .animate-slide-left {
+    animation: slide-left 0.8s ease forwards;
+  }
+
+  .animate-marquee {
+    animation: marquee-horizontal 28s linear infinite;
+  }
 }
 
 /* Custom animations for modern feel */
@@ -210,6 +218,29 @@
   }
 }
 
+@keyframes slide-left {
+  0% {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes marquee-horizontal {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -228,4 +259,3 @@
     animation: none;
   }
 }
-

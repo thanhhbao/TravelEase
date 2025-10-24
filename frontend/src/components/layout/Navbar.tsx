@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, User, LogOut, Calendar, Plane, Home } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
+import logoImage from '/public/images/logo.png';
 
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -29,13 +30,16 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200 shadow-lg">
+    <nav className="bg-sky-50/90 backdrop-blur-md sticky top-0 z-50 border-b border-sky-100 shadow-lg">
       <div className="container-custom">
         <div className="flex justify-between items-center h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3 group">
             <div className="relative">
-              <Plane className="h-10 w-10" />
+              <img
+          src={logoImage} 
+          alt="TravelEase Logo" 
+          className="h-10 w-10 object-cover"/>
             </div>
             <span className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-sky-400 to-cyan-800">
               TravelEase

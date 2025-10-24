@@ -98,7 +98,7 @@ export default function FlightDetails() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-slate-900">
       {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-sky-100 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <header className="sticky top-0 z-30 border-b border-sky-100 bg-sky-50/90 backdrop-blur supports-[backdrop-filter]:bg-sky-50/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
