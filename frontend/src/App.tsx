@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -23,6 +23,8 @@ import Tickets from './pages/dashboard/Tickets';
 import Profile from './pages/dashboard/Profile';
 import Checkout from './pages/checkout/Checkout';
 import FlightDetails from './pages/flights/FlightDetails';
+import Services from './pages/Services';
+import Contact from './pages/Contact';
 
 function App() {
   const { bootstrap, isBootstrapping } = useAuthStore();
@@ -51,7 +53,7 @@ function App() {
             <Route path="/hotels/:slug" element={<HotelDetail />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/flights" element={<Flights />} />
-             <Route path="/flights/:id" element={<FlightDetails />} /> 
+             <Route path="/flights/:id" element={<FlightDetails />} />
 
             {/* Auth: cùng 1 component, tự nhận biết qua path (/login | /register) */}
             <Route path="/login" element={<AuthPage />} />
@@ -74,6 +76,17 @@ function App() {
               <Route path="profile" element={<Profile />} />
             </Route>
 
+            {/* Service Routes */}
+            <Route path="/services" element={<Services />} />
+            <Route path="/service/contact" element={<Contact />} />
+            <Route path="/service/bookings" element={
+              <ProtectedRoute>
+                <Bookings />
+              </ProtectedRoute>
+            } />
+            <Route path="/cars" element={<Services />} />
+            <Route path="/insurance" element={<Services />} />
+
             {/* 404 */}
             <Route
               path="*"
@@ -82,7 +95,7 @@ function App() {
                   <div className="text-center">
                     <h1 className="text-4xl font-bold text-gray-900 mb-4">404 - Page Not Found</h1>
                     <p className="text-gray-600 mb-6">The page you're looking for doesn't exist.</p>
-                    <a href="/" className="btn-primary">Go Home</a>
+                    <Link to="/" className="btn-primary">Go Home</Link>
                   </div>
                 </div>
               }

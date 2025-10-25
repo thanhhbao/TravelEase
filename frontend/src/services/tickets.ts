@@ -2,29 +2,36 @@
 import { api } from "../lib/api"; 
 /* ========= Types ========= */
 export interface Passenger {
-  name: string;
-  dateOfBirth: string;
-  passportNumber: string;
+  name: string;
+  dateOfBirth: string;
+  passportNumber: string;
 }
 
 export interface Ticket {
-  id: number;
-  userId: number;
-  flightId: number;
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-  totalPrice: number;
-  status: "pending" | "confirmed" | "cancelled";
-  createdAt: string;
-  flight?: {
-    airline: string;
-    flightNumber: string;
-    fromAirport: string;
-    toAirport: string;
-    departureTime: string; // ISO
-    arrivalTime: string;   // ISO
-  };
+  id: number;
+  userId: number;
+  flightId: number;
+  passengers: Passenger[];
+  contactEmail: string;
+  contactPhone: string;
+  totalPrice: number;
+  status: "pending" | "confirmed" | "cancelled";
+  createdAt: string;
+  flight?: {
+    id: number; // THÊM: Cần cho Link chi tiết chuyến bay
+    airline: string;
+    flightNumber: string;
+    fromAirport: string;
+    toAirport: string;
+
+    // THÊM CÁC TRƯỜNG CITY
+    departure_city: string; // THÊM
+    arrival_city: string;   // THÊM
+
+    // SỬA: Đổi tên thuộc tính thời gian (từ camelCase sang snake_case) để khớp với lỗi bạn báo
+    departure_time: string; // ISO
+    arrival_time: string;   // ISO
+  };
 }
 
 export interface CreateTicketPayload {

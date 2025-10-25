@@ -13,6 +13,7 @@ use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UserPasswordController;
 use App\Http\Controllers\UserAccountDeletionController;
+use App\Http\Controllers\ContactController;
 
 // Lấy user bằng Bearer token (Sanctum PAT)
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -33,6 +34,21 @@ Route::middleware(['auth:sanctum', 'throttle:6,1'])->post('/user/delete/code', [
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::middleware('auth:sanctum')->post('/user/delete', [UserAccountDeletionController::class, 'destroy'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+// ===== Bookings =====
+use App\Http\Controllers\BookingController;
+
+Route::middleware('auth:sanctum')->get('/my-bookings', [BookingController::class, 'myBookings'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->post('/my-bookings', [BookingController::class, 'store'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->get('/my-bookings/{id}', [BookingController::class, 'show'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->post('/my-bookings/{id}/cancel', [BookingController::class, 'cancel'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ===== Auth (stateless JSON, KHÔNG dùng CSRF) =====
@@ -72,4 +88,11 @@ Route::get('/_debug/auth-header', function (Request $request) {
 // ===== Gửi email verify (cần Bearer token) =====
 Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
     ->middleware(['auth:sanctum', 'throttle:6,1'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+// ===== Contact Support =====
+Route::post('/contact', [ContactController::class, 'store'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->get('/contacts', [ContactController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);

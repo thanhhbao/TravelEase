@@ -1,131 +1,81 @@
 // src/services/bookings.ts
-import { api } from "../lib/api";
+import { getMyBookings, getBookingDetail, createBooking, cancelBooking } from "../lib/api";
 
 /* ========= Types ========= */
 export interface Booking {
   id: number;
-  userId: number;
-  hotelId: number;
-  roomId: number;
-  checkIn: string;   // ISO string
-  checkOut: string;  // ISO string
+  user_id: number;
+  hotel_id?: number;
+  room_id?: number;
+  flight_id?: number;
+  check_in?: string;
+  check_out?: string;
   guests: number;
-  totalPrice: number;
+  total_price: number;
   status: "pending" | "confirmed" | "cancelled";
-  createdAt: string; // ISO
-  hotel?: { name: string; city: string; country: string };
-  room?: { name: string };
+  type: 'hotel' | 'flight';
+  created_at: string;
+  updated_at: string;
+  hotel?: { id: number; name: string; city: string; country: string; image?: string };
+  room?: { id: number; name: string; price_per_night?: number };
+  flight?: { id: number; airline: string; flight_number: string; departure_city: string; arrival_city: string; departure_time: string; arrival_time: string; price: number };
 }
 
 export interface CreateBookingPayload {
-  hotelId: number;
-  roomId: number;
-  checkIn: string;
-  checkOut: string;
+  hotel_id?: number;
+  room_id?: number;
+  flight_id?: number;
+  check_in?: string;
+  check_out?: string;
   guests: number;
-  totalPrice: number;
+  total_price: number;
 }
 
-/* ========= In-memory fallback store ========= */
-let memory: Booking[] = [];
-
-/* ========= Helpers ========= */
-const uniqById = (items: Booking[]) => {
-  const map = new Map<number, Booking>();
-  for (const it of items) map.set(it.id, it);
-  return Array.from(map.values());
-};
-
-async function loadMockJSON<T>(path: string): Promise<T> {
-  const res = await fetch(path, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Mock not found: ${path}`);
-  return res.json();
+export interface BookingsResponse {
+  data: Booking[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
 }
 
 /* ========= Service ========= */
 export const bookingsService = {
   /**
-   * Tạo booking:
-   * - Ưu tiên API thật: POST /api/bookings
-   * - Nếu lỗi (chưa có backend): fallback tạo object tại chỗ + đẩy vào memory
+   * Get user's bookings with pagination and filters
    */
-  async createBooking(
-    payload: CreateBookingPayload & { userId?: number }
-  ): Promise<Booking> {
-    try {
-      const { data } = await api.post<Booking>("/api/bookings", payload);
-      memory = uniqById([...memory, data]);
-      return data;
-    } catch {
-      const now = new Date().toISOString();
-      const fake: Booking = {
-        id: Date.now(),
-        userId: payload.userId ?? 1,
-        hotelId: payload.hotelId,
-        roomId: payload.roomId,
-        checkIn: payload.checkIn,
-        checkOut: payload.checkOut,
-        guests: payload.guests,
-        totalPrice: payload.totalPrice,
-        status: "pending",
-        createdAt: now,
-      };
-      memory.push(fake);
-      return fake;
-    }
+  async getMyBookings(params?: {
+    page?: number;
+    per_page?: number;
+    status?: string;
+    type?: string;
+    search?: string;
+  }): Promise<BookingsResponse> {
+    const { data } = await getMyBookings(params);
+    return data;
   },
 
   /**
-   * Lấy booking của user:
-   * - Thử GET /api/bookings?userId=...
-   * - Nếu lỗi → thử đọc mock: /mock/bookings.json
-   * - Luôn merge với memory
+   * Get booking detail by ID
    */
-  async getMyBookings(userId: number): Promise<Booking[]> {
-    try {
-      const { data } = await api.get<Booking[]>(
-        `/api/bookings?userId=${userId}`
-      );
-      return uniqById([...data, ...memory]).filter((b) => b.userId === userId);
-    } catch {
-      try {
-        const mock = await loadMockJSON<Booking[]>("/mock/bookings.json");
-        return uniqById([...mock, ...memory]).filter(
-          (b) => b.userId === userId
-        );
-      } catch {
-        return memory.filter((b) => b.userId === userId);
-      }
-    }
+  async getBookingDetail(id: number): Promise<Booking> {
+    const { data } = await getBookingDetail(id);
+    return data;
   },
 
   /**
-   * Huỷ booking:
-   * - Thử POST /api/bookings/:id/cancel
-   * - Nếu lỗi → update memory
+   * Create a new booking
    */
-  async cancelBooking(bookingId: number): Promise<void> {
-    try {
-      await api.post(`/api/bookings/${bookingId}/cancel`, {});
-      const idx = memory.findIndex((b) => b.id === bookingId);
-      if (idx >= 0) memory[idx] = { ...memory[idx], status: "cancelled" };
-    } catch {
-      const bk = memory.find((b) => b.id === bookingId);
-      if (bk) bk.status = "cancelled";
-    }
+  async createBooking(payload: CreateBookingPayload): Promise<Booking> {
+    const { data } = await createBooking(payload);
+    return data.booking;
   },
 
   /**
-   * Chi tiết 1 booking:
-   * - Thử GET /api/bookings/:id
-   * - Fallback tìm trong memory
+   * Cancel a booking
    */
-  async getBookingById(bookingId: number): Promise<Booking | null> {
-    try {
-      const { data } = await api.get<Booking>(`/api/bookings/${bookingId}`);
-      return data;
-    } catch {
-      return memory.find((b) => b.id === bookingId) ?? null;
-    }
+  async cancelBooking(id: number): Promise<{ message: string }> {
+    const { data } = await cancelBooking(id);
+    return data;
   },
 };

@@ -11,6 +11,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class OtpService
@@ -35,9 +36,15 @@ class OtpService
     {
         $code = $this->createEmailVerificationCode($user->email, $ttlMinutes);
 
-        Mail::to($user->email)->send(
-            new VerificationCodeMail($user, $code, $ttlMinutes)
-        );
+        try {
+            Mail::to($user->email)->send(
+                new VerificationCodeMail($user, $code, $ttlMinutes)
+            );
+            Log::info("Verification email sent successfully to {$user->email}");
+        } catch (\Exception $e) {
+            Log::error("Failed to send verification email to {$user->email}: " . $e->getMessage());
+            throw $e; // Re-throw to handle in controller if needed
+        }
     }
 
     /**
