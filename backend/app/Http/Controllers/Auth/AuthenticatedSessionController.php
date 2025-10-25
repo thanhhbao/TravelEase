@@ -29,13 +29,14 @@ public function store(Request $request)
         ], 422);
     }
 
-    if (! $user->hasVerifiedEmail()) {
-        return response()->json([
-            'message' => 'Your email address is not verified.',
-            'requires_email_verification' => true,
-            'email' => $user->email,
-        ], 409);
-    }
+    // Allow login without email verification for now
+    // if (! $user->hasVerifiedEmail()) {
+    //     return response()->json([
+    //         'message' => 'Your email address is not verified.',
+    //         'requires_email_verification' => true,
+    //         'email' => $user->email,
+    //     ], 409);
+    // }
 
     $token = $user->createToken('web')->plainTextToken;
 

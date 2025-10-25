@@ -169,6 +169,43 @@ export const requestAccountDeletionCode = () =>
 export const deleteAccount = (payload: { code: string }) =>
   api.post("/api/user/delete", payload);
 
+/* =====================================================
+ * ================ CONTACT SUPPORT ===================
+ * ===================================================== */
+
+export const contactSupport = (payload: {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}) => api.post("/api/contact", payload);
+
+/* =====================================================
+ * ==================== BOOKINGS ======================
+ * ===================================================== */
+
+export const getMyBookings = (params?: {
+  page?: number;
+  per_page?: number;
+  status?: string;
+  type?: string;
+  search?: string;
+}) => api.get("/api/my-bookings", { params });
+
+export const getBookingDetail = (id: number) => api.get(`/api/my-bookings/${id}`);
+
+export const createBooking = (payload: {
+  hotel_id?: number;
+  room_id?: number;
+  flight_id?: number;
+  check_in?: string;
+  check_out?: string;
+  guests: number;
+  total_price: number;
+}) => api.post("/api/my-bookings", payload);
+
+export const cancelBooking = (id: number) => api.post(`/api/my-bookings/${id}/cancel`);
+
 /** Khởi động: nếu trong localStorage đã có token thì gắn vào header ngay */
 (() => {
   const token = getAuthToken();

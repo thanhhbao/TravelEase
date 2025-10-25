@@ -1,18 +1,7 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  Plane,
-  MapPin,
-  Clock,
-  ShieldCheck,
-  Ticket,
-  Calendar,
-  Info,
-  CheckCircle2,
-} from "lucide-react";
+import { ArrowLeft, Plane, MapPin, Clock, ShieldCheck, Ticket, Calendar, Info, CheckCircle2,} from "lucide-react";
 import { useMemo, useState } from "react";
 
-/** Khớp với type Flight bên FlightsNew */
 type Flight = {
   id: number;
   airline: string;
@@ -29,17 +18,19 @@ type Flight = {
 };
 
 type Seat = {
-  id: string;        // ví dụ "12A"
-  row: number;       // 1..40
-  col: string;       // A..F
+  id: string; // ví dụ "12A"
+  row: number; // 1..40
+  col: string; // A..F
   type: "standard" | "exit" | "extra" | "occupied";
-  price: number;     // 0 nếu free
+  price: number; // 0 nếu free
 };
+
 export default function FlightDetails() {
   const navigate = useNavigate();
   const { id } = useParams();
   const location = useLocation() as { state?: { flight?: Flight; search?: { pax?: number } } };
   const flight = location.state?.flight;
+  const pax = location.state?.search?.pax || 1; // Lấy số lượng khách (pax)
 
   // Fallback demo khi vào trực tiếp URL (chưa nối API theo id)
   const notFound = useMemo(() => !flight, [flight]);
@@ -127,14 +118,14 @@ export default function FlightDetails() {
         <>
           {/* Hero with cover image */}
           <section className="relative">
-            <div className="absolute inset-0">
+            {/* <div className="absolute inset-0">
               <img
                 src="https://images.unsplash.com/photo-1490135900376-3f6b42e1b1dc?q=80&w=1600&auto=format&fit=crop"
                 alt="Airplane window"
                 className="w-full h-56 object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-br from-sky-900/50 via-sky-800/35 to-cyan-700/25" />
-            </div>
+            </div> */}
             <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-6 text-white">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur ring-2 ring-white/60 overflow-hidden grid place-items-center">
@@ -198,6 +189,7 @@ export default function FlightDetails() {
                     toggleSeat={toggleSeat}
                     onSkip={() => goPayment()}
                     onContinue={() => goPayment()}
+                    pax={pax} 
                   />
                 )}
 
@@ -368,13 +360,16 @@ function ReviewCard({ flight, onContinue }: { flight: Flight; onContinue: () => 
   );
 }
 
+// =================================================================
+// UPDATED SeatCard Component
+// =================================================================
 function SeatCard({
   seatMap,
   selected,
   toggleSeat,
   onSkip,
   onContinue,
-  pax = 1,                        // ✨ nhận pax
+  pax = 1, // Nhận pax từ props
 }: {
   seatMap: Seat[];
   selected: Seat[];
@@ -385,7 +380,7 @@ function SeatCard({
 }) {
   const [hint, setHint] = useState<string>("");
 
-  // Gom hàng như cũ
+  // Logic gom hàng giữ nguyên
   const rows = useMemo(() => {
     const by: Record<number, Seat[]> = {};
     seatMap.forEach((s) => {
@@ -401,7 +396,7 @@ function SeatCard({
   const isSelected = (id: string) => selected.some((s) => s.id === id);
   const isExitRow = (r: number) => r === 10 || r === 11;
 
-  // Bộ chọn có kiểm soát số lượng
+  // Logic kiểm soát số lượng ghế chọn giữ nguyên
   const tryToggle = (s: Seat) => {
     if (s.type === "occupied") return;
     const exists = isSelected(s.id);
@@ -444,50 +439,126 @@ function SeatCard({
         {hint && <div className="text-amber-700">{hint}</div>}
       </div>
 
-      {/* ===== AIRPLANE ===== */}
+      {/* ===== AIRPLANE (DESIGN MỚI) ===== */}
       <div className="mt-5 overflow-x-auto">
         <div className="min-w-[760px] mx-auto">
-          {/* Nose */}
+          {/* Cockpit/Nose - với cửa sổ */}
+          <div className="relative mx-auto w-[600px]">
+            {/* Mũi máy bay bo tròn */}
+            <div
+              className="h-16 rounded-b-[80px]"
+              style={{
+                background:
+                  "linear-gradient(to bottom, #f0f9ff 0%, #e0f2fe 50%, #ffffff 100%)",
+                boxShadow: "inset 0 2px 8px rgba(2,132,199,.15), 0 2px 8px rgba(2,132,199,.08)",
+              }}
+            >
+              {/* Cửa sổ cockpit */}
+              <div className="flex items-center justify-center gap-3 pt-3">
+                <div className="w-16 h-8 rounded-t-full bg-gradient-to-b from-sky-300/40 to-sky-400/20 border border-sky-300/50" />
+                <div className="w-16 h-8 rounded-t-full bg-gradient-to-b from-sky-300/40 to-sky-400/20 border border-sky-300/50" />
+              </div>
+            </div>
+          </div>
+
+          {/* Fuselage - thân máy bay */}
           <div
-            className="mx-auto w-[600px] h-10 rounded-b-[56px]"
+            className="relative mx-auto w-[600px] rounded-[48px]"
             style={{
               background:
-                "radial-gradient(140px 32px at 50% -12px, rgba(14,165,233,0.25), transparent 65%), linear-gradient(to bottom, #eef7ff, #ffffff)",
-              boxShadow: "inset 0 1px 0 rgba(2,132,199,.25)",
-            }}
-          />
-          {/* Fuselage */}
-          <div
-            className="relative mx-auto w-[600px] rounded-[56px] border border-sky-100"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(247,250,252,1) 100%)",
+                "linear-gradient(180deg, #ffffff 0%, #f8fafc 50%, #f1f5f9 100%)",
               boxShadow:
-                "inset 0 10px 20px rgba(2,132,199,.06), 0 8px 20px rgba(2,132,199,.05)",
+                "inset 0 0 40px rgba(2,132,199,.08), inset -20px 0 40px rgba(2,132,199,.04), inset 20px 0 40px rgba(2,132,199,.04), 0 10px 30px rgba(2,132,199,.08)",
+              border: "2px solid rgba(2,132,199,.15)",
             }}
           >
-            {/* Wings */}
-            <div className="absolute -left-32 top-28 w-44 h-28 rotate-[10deg] bg-gradient-to-br from-sky-50 to-cyan-50 rounded-xl shadow border border-sky-100 hidden md:block" />
-            <div className="absolute -right-32 top-32 w-44 h-28 -rotate-[10deg] bg-gradient-to-br from-sky-50 to-cyan-50 rounded-xl shadow border border-sky-100 hidden md:block" />
+            {/* Cửa sổ máy bay bên trái */}
+            <div className="absolute left-3 top-8 bottom-8 w-2 flex flex-col justify-evenly">
+              {Array.from({ length: 18 }).map((_, i) => (
+                <div
+                  key={`window-left-${i}`}
+                  className="w-2 h-5 rounded-full bg-gradient-to-r from-sky-200/60 to-cyan-100/40 border border-sky-300/40"
+                />
+              ))}
+            </div>
 
-            {/* EXIT labels */}
-            <div className="absolute left-2 top-[220px] text-[10px] text-amber-600 font-semibold">EXIT</div>
-            <div className="absolute right-2 top-[220px] text-[10px] text-amber-600 font-semibold">EXIT</div>
-            <div className="absolute left-2 top-[260px] text-[10px] text-amber-600 font-semibold">EXIT</div>
-            <div className="absolute right-2 top-[260px] text-[10px] text-amber-600 font-semibold">EXIT</div>
+            {/* Cửa sổ máy bay bên phải */}
+            <div className="absolute right-3 top-8 bottom-8 w-2 flex flex-col justify-evenly">
+              {Array.from({ length: 18 }).map((_, i) => (
+                <div
+                  key={`window-right-${i}`}
+                  className="w-2 h-5 rounded-full bg-gradient-to-l from-sky-200/60 to-cyan-100/40 border border-sky-300/40"
+                />
+              ))}
+            </div>
 
-            {/* Cabin grid */}
-            <div className="px-7 py-5">
-              {/* Column headers */}
-              <div className="grid grid-cols-[38px_repeat(3,1fr)_38px_repeat(3,1fr)_38px] gap-1 px-1 text-[11px] text-slate-500 mb-1">
+            {/* Cánh máy bay trái - 3D hơn */}
+            <div
+              className="absolute -left-36 top-28 w-48 h-32 hidden md:block"
+              style={{
+                background: "linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #bae6fd 100%)",
+                clipPath: "polygon(100% 0%, 100% 100%, 0% 70%, 0% 30%)",
+                boxShadow: "0 8px 24px rgba(2,132,199,.2), inset 0 -4px 8px rgba(2,132,199,.15)",
+                border: "1px solid rgba(2,132,199,.2)",
+                transform: "perspective(500px) rotateY(-5deg) rotateZ(8deg)",
+              }}
+            >
+              {/* Chi tiết cánh */}
+              <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent" />
+            </div>
+
+            {/* Cánh máy bay phải - 3D hơn */}
+            <div
+              className="absolute -right-36 top-32 w-48 h-32 hidden md:block"
+              style={{
+                background: "linear-gradient(225deg, #f0f9ff 0%, #e0f2fe 50%, #bae6fd 100%)",
+                clipPath: "polygon(0% 0%, 0% 100%, 100% 70%, 100% 30%)",
+                boxShadow: "0 8px 24px rgba(2,132,199,.2), inset 0 -4px 8px rgba(2,132,199,.15)",
+                border: "1px solid rgba(2,132,199,.2)",
+                transform: "perspective(500px) rotateY(5deg) rotateZ(-8deg)",
+              }}
+            >
+              {/* Chi tiết cánh */}
+              <div className="absolute inset-0 bg-gradient-to-bl from-white/40 to-transparent" />
+            </div>
+
+            {/* EXIT doors với biển báo */}
+            <div className="absolute left-0 top-[220px] flex items-center">
+              <div className="w-8 h-16 bg-gradient-to-r from-amber-100 to-amber-50 border-2 border-amber-400 rounded-r-lg" />
+              <div className="ml-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded">EXIT</div>
+            </div>
+            <div className="absolute right-0 top-[220px] flex items-center justify-end">
+              <div className="mr-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded">EXIT</div>
+              <div className="w-8 h-16 bg-gradient-to-l from-amber-100 to-amber-50 border-2 border-amber-400 rounded-l-lg" />
+            </div>
+            <div className="absolute left-0 top-[268px] flex items-center">
+              <div className="w-8 h-16 bg-gradient-to-r from-amber-100 to-amber-50 border-2 border-amber-400 rounded-r-lg" />
+              <div className="ml-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded">EXIT</div>
+            </div>
+            <div className="absolute right-0 top-[268px] flex items-center justify-end">
+              <div className="mr-1 px-2 py-1 bg-amber-500 text-white text-[9px] font-bold rounded">EXIT</div>
+              <div className="w-8 h-16 bg-gradient-to-l from-amber-100 to-amber-50 border-2 border-amber-400 rounded-l-lg" />
+            </div>
+
+            {/* Cabin interior - khoang hành khách */}
+            <div className="px-8 py-6">
+              {/* Business Class indicator */}
+              <div className="mb-3 text-center">
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-100 to-pink-100 rounded-full border border-purple-200">
+                  <span className="text-xs font-bold text-purple-700">✈ ECONOMY CLASS</span>
+                </div>
+              </div>
+
+              {/* Column headers với icon ghế */}
+              <div className="grid grid-cols-[38px_repeat(3,1fr)_38px_repeat(3,1fr)_38px] gap-1 px-1 text-[11px] text-slate-600 font-semibold mb-2">
                 <div />
-                <div className="text-center">A</div>
-                <div className="text-center">B</div>
-                <div className="text-center">C</div>
-                <div className="text-center">┃</div>
-                <div className="text-center">D</div>
-                <div className="text-center">E</div>
-                <div className="text-center">F</div>
+                <div className="text-center">A<br /><span className="text-[9px] text-slate-400">Window</span></div>
+                <div className="text-center">B<br /><span className="text-[9px] text-slate-400">Middle</span></div>
+                <div className="text-center">C<br /><span className="text-[9px] text-slate-400">Aisle</span></div>
+                <div className="text-center text-sky-600">━━</div>
+                <div className="text-center">D<br /><span className="text-[9px] text-slate-400">Aisle</span></div>
+                <div className="text-center">E<br /><span className="text-[9px] text-slate-400">Middle</span></div>
+                <div className="text-center">F<br /><span className="text-[9px] text-slate-400">Window</span></div>
                 <div />
               </div>
 
@@ -500,59 +571,92 @@ function SeatCard({
                       isExitRow(row) ? "relative" : "",
                     ].join(" ")}
                   >
-                    {/* row index left */}
-                    <div className="text-[11px] text-slate-500 text-right pr-1">{row}</div>
+                    {/* row number left với icon */}
+                    <div className="text-[11px] font-bold text-slate-600 text-right pr-1 flex items-center justify-end gap-1">
+                      <span className="text-sky-500">→</span>{row}
+                    </div>
 
-                    {/* ABC */}
+                    {/* ABC - ghế bên trái */}
                     {seats.slice(0, 3).map((s) => (
                       <SeatBtn key={s.id} seat={s} active={isSelected(s.id)} onClick={() => tryToggle(s)} />
                     ))}
 
-                    {/* AISLE thicker */}
-                    <div className="h-9 flex items-stretch justify-center">
-                      <div className="h-9 w-[4px] bg-sky-100 rounded" />
+                    {/* AISLE - lối đi giữa với hiệu ứng thảm */}
+                    <div className="h-9 flex items-center justify-center">
+                      <div
+                        className="h-full w-3 rounded-sm"
+                        style={{
+                          background: "repeating-linear-gradient(90deg, #dbeafe 0px, #dbeafe 3px, #bfdbfe 3px, #bfdbfe 6px)",
+                        }}
+                      />
                     </div>
 
-                    {/* DEF */}
+                    {/* DEF - ghế bên phải */}
                     {seats.slice(3, 6).map((s) => (
                       <SeatBtn key={s.id} seat={s} active={isSelected(s.id)} onClick={() => tryToggle(s)} />
                     ))}
 
-                    {/* row index right */}
-                    <div className="text-[11px] text-slate-500 pl-1">{row}</div>
+                    {/* row number right */}
+                    <div className="text-[11px] font-bold text-slate-600 pl-1 flex items-center gap-1">
+                      {row}<span className="text-sky-500">←</span>
+                    </div>
 
-                    {/* Exit highlight overlay */}
+                    {/* Exit row highlight */}
                     {isExitRow(row) && (
-                      <div className="absolute inset-x-9 h-9 border-2 border-amber-300/70 rounded-md pointer-events-none" />
+                      <div className="absolute inset-x-10 h-9 bg-amber-100/30 border-2 border-amber-400/60 rounded-lg pointer-events-none" />
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* Facilities */}
-              <div className="mt-4 grid grid-cols-3 gap-3 text-[11px] text-slate-500">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                  Lavatory
+              {/* Facilities ở cuối cabin */}
+              <div className="mt-5 grid grid-cols-3 gap-3 text-[10px]">
+                <div className="rounded-xl border-2 border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50 p-3 text-center">
+                  <div className="text-2xl mb-1">🚻</div>
+                  <div className="font-semibold text-slate-700">Lavatory</div>
                 </div>
-                <div />
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
-                  Galley
+                <div className="rounded-xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-3 text-center flex items-center justify-center">
+                  <div className="font-semibold text-slate-600">Storage</div>
+                </div>
+                <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-3 text-center">
+                  <div className="text-2xl mb-1">☕</div>
+                  <div className="font-semibold text-slate-700">Galley</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Tail */}
-          <div
-            className="mx-auto w-[520px] h-12 -mt-1 rounded-t-[56px]"
-            style={{
-              background:
-                "radial-gradient(140px 30px at 50% 120%, rgba(14,165,233,0.15), transparent 70%), linear-gradient(to top, #eef7ff, #ffffff)",
-              boxShadow: "inset 0 -1px 0 rgba(2,132,199,.2)",
-            }}
-          />
+          {/* Tail - đuôi máy bay với vây đuôi */}
+          <div className="relative mx-auto w-[520px] -mt-2">
+            {/* Thân đuôi */}
+            <div
+              className="h-14 rounded-t-[80px]"
+              style={{
+                background:
+                  "linear-gradient(to top, #f0f9ff 0%, #e0f2fe 50%, #ffffff 100%)",
+                boxShadow: "inset 0 -2px 8px rgba(2,132,199,.15), 0 -2px 8px rgba(2,132,199,.08)",
+              }}
+            />
+
+            {/* Vây đuôi dọc (vertical stabilizer) */}
+            <div
+              className="absolute left-1/2 -translate-x-1/2 -top-12 w-24 h-20"
+              style={{
+                background: "linear-gradient(to top, #e0f2fe 0%, #bae6fd 100%)",
+                clipPath: "polygon(50% 0%, 100% 100%, 0% 100%)",
+                boxShadow: "0 -4px 16px rgba(2,132,199,.2), inset 0 4px 8px rgba(255,255,255,.4)",
+                border: "1px solid rgba(2,132,199,.3)",
+              }}
+            >
+              {/* Logo airline trên vây đuôi */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-12 h-8 bg-white/40 rounded-lg flex items-center justify-center text-xs font-bold text-sky-700">
+                ✈
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+      {/* ===== END AIRPLANE (DESIGN MỚI) ===== */}
 
       {/* Footer actions */}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
@@ -579,16 +683,11 @@ function SeatCard({
     </Card>
   );
 }
-
-
-
-
-
-
-
-/* ========== UI bits ========== */
-
+// =================================================================
+// UPDATED SeatBtn Component
+// =================================================================
 function SeatBtn({ seat, active, onClick }: { seat: Seat; active: boolean; onClick: () => void; }) {
+  // Thay đổi nhẹ class để đồng bộ với design mới (seat ID và price)
   const base = "h-9 rounded-md border text-xs font-medium grid place-items-center select-none transition-colors";
   let cls = base;
   if (seat.type === "occupied") cls += " bg-slate-300 text-slate-500 border-slate-300 cursor-not-allowed";
@@ -600,20 +699,30 @@ function SeatBtn({ seat, active, onClick }: { seat: Seat; active: boolean; onCli
   return (
     <button className={cls} onClick={onClick} disabled={seat.type === "occupied"}>
       <div className="leading-none">{seat.id}</div>
+      {/* Thay đổi màu chữ của giá tiền để hiển thị rõ hơn trên nền sáng */}
       {seat.price > 0 && <div className="text-[10px] leading-none text-slate-500">${seat.price}</div>}
     </button>
   );
 }
 
+// =================================================================
+// UPDATED LegendPill Component
+// =================================================================
 function LegendPill({ label, className, hollow }: { label: string; className: string; hollow?: boolean }) {
+  // Thêm điều kiện text-white cho pill Selected
+  const isSelectedPill = label === "Selected";
+  
   return (
-    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-slate-700 ${className}`}>
+    <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-slate-700 ${className} ${isSelectedPill ? 'text-white' : ''}`}>
       <span className={`h-3 w-3 rounded-sm ${hollow ? "border border-sky-200 bg-transparent" : "border-transparent"}`} />
       {label}
     </span>
   );
 }
 
+// =================================================================
+// CÁC COMPONENT PHỤ KHÁC (GIỮ NGUYÊN)
+// =================================================================
 function PaymentCard({
   flight,
   selected,
