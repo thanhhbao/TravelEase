@@ -7,10 +7,31 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Stripe\Exception\ApiErrorException;
+use Stripe\StripeClient;
 
 class BookingController extends Controller
 {
+    private const ZERO_DECIMAL_CURRENCIES = [
+        'BIF',
+        'CLP',
+        'DJF',
+        'GNF',
+        'JPY',
+        'KMF',
+        'KRW',
+        'MGA',
+        'PYG',
+        'RWF',
+        'UGX',
+        'VND',
+        'VUV',
+        'XAF',
+        'XOF',
+        'XPF',
+    ];
+
     /**
      * Get authenticated user's bookings with pagination and filters
      */
@@ -98,6 +119,8 @@ class BookingController extends Controller
             'check_out' => 'nullable|date|after:check_in',
             'guests' => 'required|integer|min:1',
             'total_price' => 'required|numeric|min:0',
+            'currency' => 'nullable|string|size:3',
+            'payment_intent_id' => 'nullable|string',
         ]);
 
         // Ensure at least hotel or flight is provided
@@ -110,7 +133,62 @@ class BookingController extends Controller
             return response()->json(['message' => 'check_in and check_out are required for hotel bookings'], 422);
         }
 
+        $paymentIntentId = $validated['payment_intent_id'] ?? null;
+        unset($validated['payment_intent_id']);
+
+        $currency = strtolower($validated['currency'] ?? config('stripe.currency', 'usd'));
+        unset($validated['currency']);
+
+        $bookingStatus = 'pending';
+        $paymentStatus = 'unpaid';
+        $stripePaymentIntentId = null;
+
+        if ($paymentIntentId) {
+            if (Booking::where('stripe_payment_intent_id', $paymentIntentId)->exists()) {
+                return response()->json(['message' => 'Payment has already been used for another booking.'], 422);
+            }
+
+            try {
+                $intent = $this->stripeClient()->paymentIntents->retrieve($paymentIntentId);
+            } catch (ApiErrorException $exception) {
+                Log::error('stripe.payment_intent.retrieve_failed', [
+                    'user_id' => $user->id,
+                    'payment_intent_id' => $paymentIntentId,
+                    'message' => $exception->getMessage(),
+                    'code' => $exception->getStripeCode(),
+                ]);
+
+                throw ValidationException::withMessages([
+                    'payment_intent_id' => 'Unable to verify payment. Please try again.',
+                ]);
+            }
+
+            if (($intent->metadata['user_id'] ?? null) !== (string) $user->id) {
+                return response()->json(['message' => 'Payment does not belong to the authenticated user.'], 403);
+            }
+
+            if ($intent->status !== 'succeeded') {
+                return response()->json(['message' => 'Payment has not completed successfully.'], 422);
+            }
+
+            $expectedAmount = $this->convertToMinorUnits((float) $validated['total_price'], $intent->currency);
+            $actualAmount = $intent->amount_received ?? $intent->amount;
+
+            if ($actualAmount !== $expectedAmount) {
+                return response()->json(['message' => 'Payment amount does not match booking total.'], 422);
+            }
+
+            $currency = $intent->currency;
+            $paymentStatus = $intent->status;
+            $bookingStatus = 'confirmed';
+            $stripePaymentIntentId = $intent->id;
+        }
+
         $validated['user_id'] = $user->id;
+        $validated['currency'] = $currency;
+        $validated['status'] = $bookingStatus;
+        $validated['stripe_payment_intent_id'] = $stripePaymentIntentId;
+        $validated['payment_status'] = $paymentStatus;
 
         $booking = Booking::create($validated);
 
@@ -126,5 +204,26 @@ class BookingController extends Controller
             'message' => 'Booking created successfully',
             'booking' => $booking->load(['hotel', 'room', 'flight'])
         ], 201);
+    }
+
+    private function convertToMinorUnits(float $amount, string $currency): int
+    {
+        $currency = strtoupper($currency);
+        $multiplier = in_array($currency, self::ZERO_DECIMAL_CURRENCIES, true) ? 1 : 100;
+
+        return (int) round($amount * $multiplier);
+    }
+
+    private function stripeClient(): StripeClient
+    {
+        $secret = config('stripe.secret_key');
+
+        if (!$secret) {
+            throw ValidationException::withMessages([
+                'payment' => 'Stripe is not configured. Please contact support.',
+            ]);
+        }
+
+        return app(StripeClient::class);
     }
 }

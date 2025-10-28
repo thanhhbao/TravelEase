@@ -19,8 +19,10 @@ import {
   AlarmClock,
   Globe2,
   ShieldCheck,
+  AlertTriangle,
   Wallet,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { AIRPORTS } from "../data/airports";
 
 // --- Types ---
@@ -348,6 +350,14 @@ const WaveDivider = () => (
   </svg>
 );
 
+const normalizeForSearch = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+const getTimeValue = (value: string) => (value ? new Date(value).getTime() : null);
+
 export default function Home() {
   const [searchType, setSearchType] = useState<"hotels" | "flights">("hotels");
   const [location, setLocation] = useState("");
@@ -367,8 +377,93 @@ export default function Home() {
   const fromInputRef = useRef<HTMLInputElement | null>(null);
   const toInputRef = useRef<HTMLInputElement | null>(null);
   const [activeField, setActiveField] = useState<"location" | "from" | "to" | null>(null);
+  const [searchAttempted, setSearchAttempted] = useState(false);
 
   const scrollY = useScrollAnimation();
+  const navigate = useNavigate();
+
+  const trimmedLocation = location.trim();
+  const trimmedFromCity = fromCity.trim();
+  const trimmedToCity = toCity.trim();
+  const travelerCount = parseInt(persons, 10);
+  const hasGuests = Number.isFinite(travelerCount) && travelerCount > 0;
+
+  const checkInTime = getTimeValue(checkIn);
+  const checkOutTime = getTimeValue(checkOut);
+
+  const hotelDatesValid = Boolean(
+    checkInTime !== null &&
+      checkOutTime !== null &&
+      checkOutTime > checkInTime
+  );
+
+  const flightDatesValid = Boolean(
+    checkInTime !== null &&
+      checkOutTime !== null &&
+      checkOutTime >= checkInTime
+  );
+
+  const isHotelSearchReady = Boolean(
+    trimmedLocation &&
+      checkIn &&
+      checkOut &&
+      hasGuests &&
+      hotelDatesValid
+  );
+
+  const flightRouteValid = Boolean(
+    trimmedFromCity &&
+      trimmedToCity &&
+      normalizeForSearch(trimmedFromCity) !== normalizeForSearch(trimmedToCity)
+  );
+
+  const isFlightSearchReady = Boolean(
+    trimmedFromCity &&
+      trimmedToCity &&
+      checkIn &&
+      checkOut &&
+      hasGuests &&
+      flightDatesValid &&
+      flightRouteValid
+  );
+
+  const isSearchReady =
+    searchType === "hotels" ? isHotelSearchReady : isFlightSearchReady;
+
+  let validationHint: string | null = null;
+
+  if (searchAttempted && !isSearchReady) {
+    if (
+      searchType === "hotels" &&
+      trimmedLocation &&
+      checkIn &&
+      checkOut &&
+      hasGuests &&
+      !hotelDatesValid
+    ) {
+      validationHint = "Check-out must be after check-in.";
+    } else if (
+      searchType === "flights" &&
+      trimmedFromCity &&
+      trimmedToCity &&
+      checkIn &&
+      checkOut &&
+      hasGuests
+    ) {
+      if (!flightDatesValid) {
+        validationHint = "Return date must be on or after the departure date.";
+      } else if (!flightRouteValid) {
+        validationHint = "Departure and arrival locations must be different.";
+      }
+    } else {
+      validationHint =
+        searchType === "hotels"
+          ? "Please choose a destination, stay dates, and guests before searching."
+          : "Please enter departure city, destination, travel dates, and passengers before searching.";
+    }
+  }
+
+  const shouldShowValidationHint = Boolean(validationHint);
 
   useEffect(() => {
     setFeaturedHotels(mockHotels);
@@ -379,6 +474,7 @@ export default function Home() {
     setSuggestions([]);
     setSelectedIndex(-1);
     setActiveField(null);
+    setSearchAttempted(false);
   }, [searchType]);
 
   // Close suggestions when clicking outside
@@ -519,12 +615,40 @@ export default function Home() {
   };
 
   const handleSearch = () => {
+    setSearchAttempted(true);
+
+    if (!isSearchReady) {
+      return;
+    }
+
     if (searchType === "hotels") {
-      console.log("Search hotels:", { location, persons, checkIn, checkOut });
-      window.location.href = "/hotels";
+      const params = new URLSearchParams();
+
+      if (trimmedLocation) {
+        params.set("location", normalizeForSearch(trimmedLocation));
+      }
+
+      if (persons.trim()) {
+        params.set("guests", persons.trim());
+      }
+
+      console.log("Search hotels:", {
+        location: trimmedLocation,
+        persons,
+        checkIn,
+        checkOut,
+      });
+
+      navigate(`/hotels${params.toString() ? `?${params.toString()}` : ""}`);
     } else {
-      console.log("Search flights:", { fromCity, toCity, checkIn, checkOut, persons });
-      window.location.href = "/flights";
+      console.log("Search flights:", {
+        fromCity: trimmedFromCity,
+        toCity: trimmedToCity,
+        checkIn,
+        checkOut,
+        persons,
+      });
+      navigate("/flights");
     }
   };
 
@@ -972,14 +1096,30 @@ export default function Home() {
                 </AnimatePresence>
 
                 <motion.button
-                  whileHover={{ scale: 1.02, y: -1 }}
-                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  aria-disabled={!isSearchReady}
+                  whileHover={isSearchReady ? { scale: 1.02, y: -1 } : undefined}
+                  whileTap={isSearchReady ? { scale: 0.98 } : undefined}
                   onClick={handleSearch}
-                  className=" btn-primary mt-6 w-full md:w-auto font-extrabold px-8 py-4 rounded-3xl shadow-xl hover:shadow-2xl focus:outline-none focus:ring-4 inline-flex items-center justify-center gap-3"
+                  className={`btn-primary mt-6 w-full md:w-auto font-extrabold px-8 py-4 rounded-3xl shadow-xl focus:outline-none focus:ring-4 inline-flex items-center justify-center gap-3 transition ${
+                    isSearchReady ? "hover:shadow-2xl" : "opacity-70 hover:shadow-xl"
+                  }`}
                 >
                   <Search className="" />
                   {(!showSuggestions || activeField === "to") && <span>Search Now</span>}
                 </motion.button>
+                {shouldShowValidationHint && validationHint && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 w-full md:w-auto"
+                  >
+                    <div className="flex items-start gap-3 rounded-2xl border border-rose-200/70 bg-gradient-to-r from-rose-50/90 via-rose-50/60 to-white/60 px-4 py-3 shadow-sm backdrop-blur">
+                      <AlertTriangle className="h-5 w-5 flex-shrink-0 text-rose-500" />
+                      <p className="text-sm font-medium text-rose-600">{validationHint}</p>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </div>
           </motion.div>

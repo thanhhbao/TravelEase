@@ -23,6 +23,12 @@ function getPageNumbers(current: number, total: number): (number | "...")[] {
   return pages;
 }
 
+const normalizeForSearch = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
 export default function HotelsList() {
   const [searchParams] = useSearchParams();
   const [hotels, setHotels] = useState<HotelFull[]>([]);
@@ -43,12 +49,20 @@ export default function HotelsList() {
   };
 
   const [filters, setFilters] = useState<FiltersState>({
-    location: (searchParams.get("location") || "").toLowerCase(),
+    location: normalizeForSearch(searchParams.get("location") || ""),
     minPrice: 0,
     maxPrice: 1000,
     stars: 0,
     sortBy: "recommended",
   });
+
+  const locationQuery = normalizeForSearch(searchParams.get("location") || "");
+
+  useEffect(() => {
+    setFilters((prev) =>
+      prev.location === locationQuery ? prev : { ...prev, location: locationQuery }
+    );
+  }, [locationQuery]);
 
   useEffect(() => {
     (async () => {
@@ -69,11 +83,11 @@ export default function HotelsList() {
     let list = [...hotels];
 
     if (filters.location) {
-      list = list.filter(
-        (h) =>
-          h.city.toLowerCase().includes(filters.location) ||
-          h.country.toLowerCase().includes(filters.location)
-      );
+      list = list.filter((h) => {
+        const city = normalizeForSearch(h.city);
+        const country = normalizeForSearch(h.country);
+        return city.includes(filters.location) || country.includes(filters.location);
+      });
     }
 
     list = list.filter(
@@ -101,7 +115,11 @@ export default function HotelsList() {
   const handleFilterChange = <K extends keyof FiltersState>(
     key: K,
     value: FiltersState[K]
-  ) => setFilters((prev) => ({ ...prev, [key]: value }));
+  ) =>
+    setFilters((prev) => ({
+      ...prev,
+      [key]: key === "location" ? normalizeForSearch(value as string) : value,
+    }));
 
   const clearAllFilters = () =>
     setFilters({ location: "", minPrice: 0, maxPrice: 1000, stars: 0, sortBy: "recommended" });

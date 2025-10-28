@@ -16,7 +16,10 @@ class Booking extends Model
         'check_out',
         'guests',
         'total_price',
+        'currency',
         'status',
+        'stripe_payment_intent_id',
+        'payment_status',
     ];
 
     protected $casts = [
@@ -24,6 +27,9 @@ class Booking extends Model
         'check_out' => 'date',
         'total_price' => 'decimal:2',
         'guests' => 'integer',
+        'currency' => 'string',
+        'status' => 'string',
+        'payment_status' => 'string',
     ];
 
     public function user(): BelongsTo

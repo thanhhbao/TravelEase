@@ -204,6 +204,7 @@ export default function Bookings() {
     null,
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     status: '',
@@ -218,6 +219,7 @@ export default function Bookings() {
       if (!user) return;
 
       setIsLoading(true);
+      setErrorMessage(null);
       try {
         const params = {
           page,
@@ -238,6 +240,10 @@ export default function Bookings() {
       } catch (error) {
         console.error('Failed to load bookings:', error);
         toast.error('Failed to load bookings');
+        setErrorMessage(
+          'Unable to load your bookings. Please confirm the backend is running and the database is migrated.',
+        );
+        setBookingsData(null);
       } finally {
         setIsLoading(false);
       }
@@ -393,7 +399,25 @@ export default function Bookings() {
         </div>
 
         {/* Bookings List */}
-        {bookingsData && bookingsData.data.length > 0 ? (
+        {errorMessage ? (
+          <div className="text-center py-16 bg-white rounded-2xl shadow-lg border-2 border-rose-100">
+            <div className="bg-rose-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-100">
+              <XCircle className="h-12 w-12 text-rose-500" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">
+              We couldn&apos;t load your bookings
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              {errorMessage}
+            </p>
+            <button
+              onClick={() => loadBookings(currentPage)}
+              className="px-8 py-3 bg-gradient-to-r from-sky-600 to-cyan-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-200 font-medium"
+            >
+              Try Again
+            </button>
+          </div>
+        ) : bookingsData && bookingsData.data.length > 0 ? (
           <>
             <div className="space-y-6 mb-8">
               {bookingsData.data.map((booking) => (

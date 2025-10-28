@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
+import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import {
   Check,
   CreditCard,
@@ -9,10 +9,11 @@ import {
   MapPin,
   Star,
   ShieldCheck,
-  Wallet,
-  Gift,
 } from "lucide-react";
-import { ScrollStack } from "../../components/ScrollStack";
+import axios from "axios";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { createBooking, createPaymentIntent } from "../../lib/api";
 
 type LocationState = {
   hotelId: number;
@@ -29,195 +30,257 @@ type LocationState = {
   thumbnail: string;
   city: string;
   country: string;
+  flightId?: number;
+};
+
+type BookingPayload = {
+  hotel_id?: number;
+  room_id?: number;
+  flight_id?: number;
+  check_in?: string;
+  check_out?: string;
+  guests: number;
+  total_price: number;
+};
+
+type PaymentIntentState = {
+  loading: boolean;
+  clientSecret: string;
+  publishableKey: string;
+  paymentIntentId: string;
+  currency: string;
+  error: string;
+};
+
+type BookingResult = {
+  id: number;
+  status: string;
+  total_price: number;
+  currency: string;
+  check_in?: string | null;
+  check_out?: string | null;
+  created_at?: string;
+  hotel?: { name?: string | null };
+  room?: { name?: string | null };
 };
 
 export default function Checkout() {
   const { state } = useLocation() as { state: LocationState | null };
-  // fallback demo nếu vào trực tiếp
-  const data: LocationState =
-    state ?? {
-      hotelId: 0,
-      hotelName: "Sample Hotel",
-      hotelSlug: "sample",
-      roomId: 1,
-      roomName: "Deluxe King",
-      checkIn: new Date().toISOString().slice(0, 10),
-      checkOut: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-      guests: 2,
-      nights: 2,
-      pricePerNight: 180,
-      totalPrice: 360,
-      thumbnail:
-        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop",
-      city: "Hanoi",
-      country: "Vietnam",
-    };
+  const data = useMemo<LocationState>(
+    () =>
+      state ?? {
+        hotelId: 0,
+        hotelName: "Sample Hotel",
+        hotelSlug: "sample",
+        roomId: 1,
+        roomName: "Deluxe King",
+        checkIn: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        checkOut: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
+        guests: 2,
+        nights: 2,
+        pricePerNight: 180,
+        totalPrice: 360,
+        thumbnail:
+          "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop",
+        city: "Hanoi",
+        country: "Vietnam",
+        flightId: undefined,
+      },
+    [state]
+  );
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [agreeSMS, setAgreeSMS] = useState(true);
+  const [intentState, setIntentState] = useState<PaymentIntentState>({
+    loading: false,
+    clientSecret: "",
+    publishableKey: "",
+    paymentIntentId: "",
+    currency: "usd",
+    error: "",
+  });
+  const [bookingResult, setBookingResult] = useState<unknown | null>(null);
+  const [bookingMessage, setBookingMessage] = useState<string | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const bookingSummary = useMemo(
+    () => (isBookingResult(bookingResult) ? bookingResult : null),
+    [bookingResult]
+  );
 
   const bookingFee = 12; // demo
   const subtotal = useMemo(() => data.totalPrice, [data.totalPrice]);
   const grandTotal = useMemo(() => subtotal + bookingFee, [subtotal]);
+  const amount = useMemo(() => Number(grandTotal.toFixed(2)), [grandTotal]);
+  const stripePromise = useMemo(
+    () => (intentState.publishableKey ? loadStripe(intentState.publishableKey) : null),
+    [intentState.publishableKey]
+  );
+  const elementsOptions = useMemo(
+    () =>
+      intentState.clientSecret
+        ? {
+            clientSecret: intentState.clientSecret,
+            appearance: {
+              theme: "stripe" as const,
+              variables: {
+                colorPrimary: "#0f172a",
+                borderRadius: "14px",
+              },
+            },
+          }
+        : undefined,
+    [intentState.clientSecret]
+  );
+  const bookingPayload = useMemo<BookingPayload>(() => {
+    const payload: BookingPayload = {
+      guests: data.guests,
+      total_price: amount,
+    };
 
-  const walletOptions = [
-    { id: "paypal", label: "PayPal", description: "Link to your PayPal account for one-click checkout." },
-    { id: "apple-pay", label: "Apple Pay", description: "Secure payments across your Apple devices." },
-    { id: "google-pay", label: "Google Pay", description: "Fast checkout with your saved cards." },
-  ];
+    if (data.hotelId) {
+      payload.hotel_id = data.hotelId;
+      if (data.roomId) payload.room_id = data.roomId;
+      if (data.checkIn) payload.check_in = data.checkIn;
+      if (data.checkOut) payload.check_out = data.checkOut;
+    }
 
-  const paymentStackItems = [
-    {
-      id: "card",
-      content: (
-        <motion.div
-          whileHover={{ translateY: -4, scale: 1.01 }}
-          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-8 shadow-xl text-slate-900"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
-                Primary method
-              </p>
-              <h4 className="mt-2 text-2xl font-semibold">Credit / Debit Card</h4>
-              <p className="mt-1 text-sm text-slate-600">
-                Enter your card credentials securely. We accept major cards worldwide.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {["VISA", "MC", "AMEX"].map((logo) => (
-                <span
-                  key={logo}
-                  className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-semibold tracking-[0.3em] text-slate-600"
-                >
-                  {logo}
-                </span>
-              ))}
-            </div>
-          </div>
+    if (data.flightId) {
+      payload.flight_id = data.flightId;
+    }
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <Input
-              label="Card Number"
-              placeholder="4242 4242 4242 4242"
-              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
-            />
-            <Input
-              label="Name on Card"
-              placeholder="Your name"
-              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
-            />
-            <Input
-              label="Expiry"
-              placeholder="MM/YY"
-              className="md:col-span-1"
-              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
-            />
-            <Input
-              label="CVC"
-              placeholder="CVC"
-              className="md:col-span-1"
-              inputClassName="border-sky-200 bg-white/90 focus:ring-sky-200"
-            />
-          </div>
+    return payload;
+  }, [amount, data]);
 
-          <p className="mt-5 text-xs text-slate-500 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
-            Protected by 256-bit SSL encryption and PSD2 compliant security layers.
-          </p>
-        </motion.div>
-      ),
-    },
-    {
-      id: "wallets",
-      content: (
-        <motion.div
-          whileHover={{ translateY: -4, scale: 1.01 }}
-          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-7 shadow-xl text-slate-900"
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
-                Express checkout
-              </p>
-              <h4 className="mt-2 text-xl font-semibold">Digital Wallets</h4>
-              <p className="mt-1 text-sm text-slate-600">
-                Connect an existing wallet for instant approval and one-tap authentication.
-              </p>
-            </div>
-            <Wallet className="h-10 w-10 text-sky-500" />
-          </div>
+  const fetchIntent = useCallback(async () => {
+    setIntentState((prev) => ({
+      ...prev,
+      loading: true,
+      error: "",
+      clientSecret: "",
+      publishableKey: "",
+      paymentIntentId: "",
+    }));
 
-          <div className="mt-6 space-y-3">
-            {walletOptions.map((wallet) => (
-              <button
-                key={wallet.id}
-                className="w-full rounded-2xl border border-sky-100 bg-white/90 px-4 py-4 text-left text-sm font-semibold text-slate-700 hover:bg-white transition"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span>{wallet.label}</span>
-                  <span className="text-xs uppercase tracking-[0.3em] text-sky-500">
-                    Connect
-                  </span>
-                </div>
-                <p className="mt-1 text-xs font-normal text-slate-500">
-                  {wallet.description}
-                </p>
-              </button>
-            ))}
-          </div>
-        </motion.div>
-      ),
-    },
-    {
-      id: "perks",
-      content: (
-        <motion.div
-          whileHover={{ translateY: -4, scale: 1.01 }}
-          className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-7 shadow-xl text-slate-900"
-        >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
-                TravelEase bonus
-              </p>
-              <h4 className="mt-2 text-xl font-semibold">Rewards & protection</h4>
-              <p className="mt-1 text-sm text-slate-600">
-                Activate exclusive perks with every booking and enjoy zero-fee cancellations.
-              </p>
-            </div>
-            <Gift className="h-9 w-9 text-sky-500" />
-          </div>
+    const metadata: Record<string, string> = {
+      booking_type: data.hotelId ? "hotel" : data.flightId ? "flight" : "custom",
+      guests: String(data.guests),
+      nights: String(data.nights),
+      hotel_name: data.hotelName,
+      hotel_slug: data.hotelSlug,
+      room_name: data.roomName,
+      city: data.city,
+      country: data.country,
+    };
 
-          <ul className="mt-6 space-y-3 text-sm text-slate-600">
-            <li className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-emerald-500" />
-              <span>Earn 3x TravelEase reward points on premium rooms and suites.</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-emerald-500" />
-              <span>Instant lounge access vouchers on stays over $500.</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="h-5 w-5 text-emerald-500" />
-              <span>Automatic trip protection with real-time concierge support.</span>
-            </li>
-          </ul>
-        </motion.div>
-      ),
-    },
-  ];
+    if (data.hotelId) metadata.hotel_id = String(data.hotelId);
+    if (data.roomId) metadata.room_id = String(data.roomId);
+    if (data.flightId) metadata.flight_id = String(data.flightId);
+    if (data.checkIn) metadata.check_in = data.checkIn;
+    if (data.checkOut) metadata.check_out = data.checkOut;
+
+    try {
+      const { data: intent } = await createPaymentIntent({
+        amount,
+        currency: "usd",
+        description: `TravelEase booking for ${data.hotelName}`,
+        metadata,
+      });
+
+      setIntentState({
+        loading: false,
+        error: "",
+        clientSecret: intent.clientSecret,
+        publishableKey: intent.publishableKey,
+        paymentIntentId: intent.paymentIntentId,
+        currency: intent.currency ?? "usd",
+      });
+    } catch (error) {
+      let message = "Unable to initialise payment. Please try again.";
+
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          message = "Please sign in to complete your payment.";
+        } else {
+          const responseData = error.response?.data as
+            | { message?: string; stripe?: string; payment?: string }
+            | undefined;
+          message =
+            responseData?.stripe ??
+            responseData?.payment ??
+            responseData?.message ??
+            message;
+        }
+      }
+
+      setIntentState({
+        loading: false,
+        error: message,
+        clientSecret: "",
+        publishableKey: "",
+        paymentIntentId: "",
+        currency: "usd",
+      });
+    }
+  }, [amount, data]);
+
+  useEffect(() => {
+    if (step !== 2) return;
+    if (intentState.clientSecret || intentState.loading || intentState.error) return;
+
+    void fetchIntent();
+  }, [fetchIntent, intentState.clientSecret, intentState.error, intentState.loading, step]);
+
+  const handlePaymentSuccess = useCallback((booking: unknown, message?: string | null) => {
+    setBookingResult(booking ?? null);
+    setBookingMessage(message ?? null);
+    setStep(3);
+  }, []);
+
+  const handleProcessingChange = useCallback((processing: boolean) => {
+    setIsProcessingPayment(processing);
+  }, []);
+
+  const handleRetryIntent = useCallback(() => {
+    void fetchIntent();
+  }, [fetchIntent]);
+
+  const resetCheckoutFlow = useCallback(() => {
+    setIntentState({
+      loading: false,
+      clientSecret: "",
+      publishableKey: "",
+      paymentIntentId: "",
+      currency: "usd",
+      error: "",
+    });
+    setBookingResult(null);
+    setBookingMessage(null);
+    setIsProcessingPayment(false);
+    setFormErrors([]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
       {/* Steps */}
       <div className="max-w-7xl mx-auto px-6 md:px-8 pt-6">
         <ol className="flex items-center gap-6 text-sm">
-          <StepDot active={step >= 1} title="Travel Detail" onClick={() => setStep(1)} />
+          <StepDot
+            active={step >= 1}
+            title="Travel Detail"
+            onClick={() => {
+              setFormErrors([]);
+              setStep(1);
+            }}
+          />
           <Divider />
           <StepDot active={step >= 2} title="Payment Detail" onClick={() => setStep(2)} />
           <Divider />
-          <StepDot active={step >= 3} title="Payment Result" onClick={() => setStep(3)} />
+          <StepDot
+            active={step >= 3}
+            title="Payment Result"
+            onClick={bookingSummary ? () => setStep(3) : undefined}
+          />
         </ol>
       </div>
 
@@ -296,15 +359,14 @@ export default function Checkout() {
                       Payment Detail
                     </div>
                     <h3 className="mt-3 text-2xl font-semibold text-slate-900">
-                      Choose how you want to pay
+                      Confirm and pay
                     </h3>
                     <p className="text-sm text-slate-500">
-                      Scroll through the stack to preview each option. When you integrate Stripe or
-                      another provider, drop the component inside the glass card.
+                      Complete your reservation securely with Stripe.
                     </p>
                   </div>
                   <div className="text-xs uppercase tracking-[0.35em] text-slate-400">
-                    Scroll to explore
+                    Secure checkout
                   </div>
                 </div>
 
@@ -313,49 +375,154 @@ export default function Checkout() {
                   <div className="absolute -bottom-32 left-16 h-56 w-56 rounded-full bg-sky-200/60 blur-3xl pointer-events-none" />
                   <div className="absolute -top-28 right-10 h-56 w-56 rounded-full bg-cyan-200/50 blur-3xl pointer-events-none" />
 
-                  <div className="relative">
-                    <ScrollStack
-                      items={paymentStackItems}
-                      topOffset={24}
-                      cardHeight={340}
-                      overlapOffset={72}
-                      motion="slide"
-                    />
+                  <div className="relative space-y-6">
+                    <div className="rounded-[28px] border border-sky-100 bg-white/85 backdrop-blur-xl p-6 md:p-8 shadow-xl">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.35em] text-sky-600">
+                            Amount due
+                          </p>
+                          <h4 className="mt-2 text-2xl font-semibold">
+                            {formatCurrency(amount, intentState.currency)}
+                          </h4>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Charged immediately when you confirm payment.
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
+                            Powered by Stripe
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {intentState.loading && (
+                      <div className="rounded-2xl border border-slate-200 bg-white/70 p-6 text-sm text-slate-600">
+                        Preparing secure payment form...
+                      </div>
+                    )}
+
+                    {intentState.error && (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+                        <p className="font-semibold">We couldn&apos;t start the payment.</p>
+                        <p className="mt-1 text-sm">{intentState.error}</p>
+                        <button
+                          type="button"
+                          onClick={handleRetryIntent}
+                          className="mt-4 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100"
+                          disabled={intentState.loading}
+                        >
+                          Try again
+                        </button>
+                      </div>
+                    )}
+
+                    {!intentState.loading &&
+                      !intentState.error &&
+                      (!stripePromise || !elementsOptions || !intentState.paymentIntentId) && (
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-6 text-yellow-800">
+                          Stripe is not configured correctly. Please verify your publishable key.
+                        </div>
+                      )}
+
+                    {stripePromise &&
+                      elementsOptions &&
+                      intentState.paymentIntentId &&
+                      !intentState.loading &&
+                      !intentState.error && (
+                        <Elements
+                          key={intentState.clientSecret}
+                          stripe={stripePromise}
+                          options={elementsOptions}
+                        >
+                          <StripePaymentForm
+                            amount={amount}
+                            currency={intentState.currency}
+                            paymentIntentId={intentState.paymentIntentId}
+                            bookingPayload={bookingPayload}
+                            onSuccess={handlePaymentSuccess}
+                            onProcessingChange={handleProcessingChange}
+                            isProcessing={isProcessingPayment}
+                          />
+                        </Elements>
+                      )}
+
+                    <p className="flex items-center gap-2 text-xs text-slate-500">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      TravelEase uses tokenized payments and never stores your full card details.
+                    </p>
                   </div>
                 </div>
-
-                <p className="flex items-center gap-2 text-xs text-slate-500">
-                  <Lock className="h-4 w-4 text-emerald-500" />
-                  TravelEase uses tokenized payments and never stores your full card details.
-                </p>
               </div>
 
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setStep(1)}
+                  onClick={() => {
+                    setFormErrors([]);
+                    setStep(1);
+                  }}
                   className="px-5 py-3 rounded-xl border border-slate-200 hover:bg-slate-50"
+                  disabled={isProcessingPayment}
                 >
                   Back
                 </button>
-                <button
-                  onClick={() => setStep(3)}
-                  className="flex-1 md:flex-none md:w-48 bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition"
-                >
-                  Pay Now
-                </button>
+                <p className="text-xs text-slate-500">
+                  Need help? Contact{" "}
+                  <a href="mailto:support@travelease.com" className="font-semibold text-slate-700">
+                    support@travelease.com
+                  </a>
+                </p>
               </div>
             </div>
           )}
 
           {step === 3 && (
             <div className="mt-12 rounded-2xl border border-slate-200 p-8 text-center">
-              <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                 <Check className="h-6 w-6" />
               </div>
               <h2 className="mt-4 text-2xl font-bold text-slate-900">Payment Successful</h2>
               <p className="mt-2 text-slate-600">
-                Your reservation has been confirmed. A confirmation email has been sent to you.
+                {bookingMessage ??
+                  "Your reservation has been confirmed. A confirmation email has been sent to you."}
               </p>
+
+              {bookingSummary && (
+                <div className="mt-6 space-y-2 rounded-xl bg-slate-50 p-5 text-left text-sm text-slate-600">
+                  <Row label="Booking ID" value={`#${bookingSummary.id}`} />
+                  <Row label="Status" value={bookingSummary.status} />
+                  <Row
+                    label="Total paid"
+                    value={formatCurrency(bookingSummary.total_price, bookingSummary.currency)}
+                  />
+                  {bookingSummary.check_in && <Row label="Check-in" value={bookingSummary.check_in} />}
+                  {bookingSummary.check_out && (
+                    <Row label="Check-out" value={bookingSummary.check_out} />
+                  )}
+                  {bookingSummary.hotel?.name && <Row label="Hotel" value={bookingSummary.hotel.name} />}
+                  {bookingSummary.room?.name && <Row label="Room" value={bookingSummary.room.name} />}
+                </div>
+              )}
+
+              <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                <Link
+                  to="/dashboard/bookings"
+                  className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  View my bookings
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetCheckoutFlow();
+                    setStep(1);
+                  }}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Make another booking
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -414,11 +581,11 @@ export default function Checkout() {
             </div>
 
             <dl className="mt-4 space-y-2 text-sm">
-              <Row label="Booking fee" value={`$ ${bookingFee.toFixed(2)}`} />
-              <Row label="Subtotal" value={`$ ${subtotal.toFixed(2)}`} />
+              <Row label="Booking fee" value={formatCurrency(bookingFee, intentState.currency)} />
+              <Row label="Subtotal" value={formatCurrency(subtotal, intentState.currency)} />
               <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-semibold">
                 <dt>Grand Total</dt>
-                <dd>$ {grandTotal.toFixed(2)}</dd>
+                <dd>{formatCurrency(grandTotal, intentState.currency)}</dd>
               </div>
             </dl>
           </div>
@@ -449,6 +616,129 @@ export default function Checkout() {
 }
 
 /* ---------------- Small components ---------------- */
+type StripePaymentFormProps = {
+  amount: number;
+  currency: string;
+  paymentIntentId: string;
+  bookingPayload: BookingPayload;
+  onSuccess: (booking: unknown, message?: string | null) => void;
+  onProcessingChange: (processing: boolean) => void;
+  isProcessing: boolean;
+};
+
+function StripePaymentForm({
+  amount,
+  currency,
+  paymentIntentId,
+  bookingPayload,
+  onSuccess,
+  onProcessingChange,
+  isProcessing,
+}: StripePaymentFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!stripe || !elements) return;
+
+    setSubmitting(true);
+    setMessage(null);
+    onProcessingChange(true);
+
+    try {
+      if (!paymentConfirmed) {
+        const { error, paymentIntent } = await stripe.confirmPayment({
+          elements,
+          redirect: "if_required",
+        });
+
+        if (error) {
+          setMessage(error.message ?? "Payment could not be confirmed. Please try again.");
+          return;
+        }
+
+        if (!paymentIntent) {
+          setMessage("Payment confirmation failed. Please try again.");
+          return;
+        }
+
+        if (paymentIntent.status === "succeeded") {
+          setPaymentConfirmed(true);
+        } else if (paymentIntent.status === "processing") {
+          setMessage("Payment is processing. Please wait a few seconds and submit again.");
+          return;
+        } else {
+          setMessage(
+            `Payment status: ${paymentIntent.status}. Please try another payment method or contact support.`
+          );
+          return;
+        }
+      }
+
+      const { data } = await createBooking({
+        ...bookingPayload,
+        currency,
+        payment_intent_id: paymentIntentId,
+      });
+
+      onSuccess(data?.booking ?? null, data?.message ?? null);
+    } catch (error) {
+      let friendlyMessage = paymentConfirmed
+        ? "We confirmed your payment, but booking failed. Please try again."
+        : "Payment failed. Please check your details and try again.";
+
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          friendlyMessage = "Your session expired. Please sign in again.";
+        } else {
+          const responseData = error.response?.data as
+            | { message?: string; errors?: Record<string, string[]> }
+            | undefined;
+          friendlyMessage =
+            responseData?.message ??
+            responseData?.errors?.payment_intent_id?.[0] ??
+            friendlyMessage;
+        }
+      }
+
+      setMessage(friendlyMessage);
+    } finally {
+      setSubmitting(false);
+      onProcessingChange(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <PaymentElement options={{ layout: "tabs" }} />
+
+      {message && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {message}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        disabled={!stripe || !elements || submitting || isProcessing}
+        className={`w-full rounded-xl bg-slate-900 py-3 text-sm font-semibold text-white transition ${
+          submitting || isProcessing ? "opacity-60" : "hover:bg-slate-800"
+        }`}
+      >
+        {paymentConfirmed ? "Finalize booking" : `Pay ${formatCurrency(amount, currency)}`}
+      </button>
+
+      <p className="text-center text-xs text-slate-500">
+        You will be charged {formatCurrency(amount, currency)}.
+      </p>
+    </form>
+  );
+}
+
 function StepDot({
   active,
   title,
@@ -458,8 +748,14 @@ function StepDot({
   title: string;
   onClick?: () => void;
 }) {
+  const clickable = typeof onClick === "function";
   return (
-    <li className="flex items-center gap-3 cursor-pointer" onClick={onClick}>
+    <li
+      className={`flex items-center gap-3 ${
+        clickable ? "cursor-pointer" : "cursor-default"
+      }`}
+      onClick={clickable ? onClick : undefined}
+    >
       <div
         className={`h-6 w-6 rounded-full grid place-items-center ${
           active ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-600"
@@ -557,5 +853,28 @@ function BadgeRow({
         <div className="text-sm text-slate-500">{text}</div>
       </div>
     </div>
+  );
+}
+
+function formatCurrency(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amount);
+  } catch {
+    return `${currency.toUpperCase()} ${amount.toFixed(2)}`;
+  }
+}
+
+function isBookingResult(value: unknown): value is BookingResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+
+  return (
+    typeof record.id === "number" &&
+    typeof record.status === "string" &&
+    typeof record.total_price === "number" &&
+    typeof record.currency === "string"
   );
 }

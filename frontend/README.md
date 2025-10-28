@@ -96,11 +96,17 @@ To connect to a real backend:
 2. **Set API base URL**
 
    ```env
-   VITE_API_BASE=http://localhost:8000/api
+   VITE_API_BASE_URL=http://localhost:8000
    ```
 
 3. **Update services**
-   The service layer automatically switches between mock and real API based on the `VITE_API_BASE` environment variable.
+   The service layer automatically switches between mock and real API based on the `VITE_API_BASE_URL` environment variable.
+
+### Stripe Checkout
+
+- The checkout page now uses Stripe Elements. Install dependencies with `npm install` after pulling the latest changes.
+- No additional frontend environment variables are required; the backend returns the publishable key via `/api/payments/intent`.
+- Ensure the Laravel backend is running with `STRIPE_SECRET` and `STRIPE_PUBLISHABLE_KEY` configured; otherwise the payment form will not load.
 
 ## 🎨 Design System
 
@@ -192,7 +198,7 @@ The service layer is designed for easy backend integration:
 
 ```typescript
 // services/api.ts
-export const API_BASE = import.meta.env.VITE_API_BASE || "";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 // Automatically switches between mock and real API
 const response = await api.get("/api/hotels");
