@@ -14,6 +14,8 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UserPasswordController;
 use App\Http\Controllers\UserAccountDeletionController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\StripeWebhookController;
 
 // Lấy user bằng Bearer token (Sanctum PAT)
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -49,6 +51,13 @@ Route::middleware('auth:sanctum')->get('/my-bookings/{id}', [BookingController::
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::middleware('auth:sanctum')->post('/my-bookings/{id}/cancel', [BookingController::class, 'cancel'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+// ===== Payments =====
+Route::middleware('auth:sanctum')->post('/payments/intent', [PaymentController::class, 'createIntent'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::post('/stripe/webhook', StripeWebhookController::class)
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ===== Auth (stateless JSON, KHÔNG dùng CSRF) =====

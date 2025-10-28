@@ -12,7 +12,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(\Stripe\StripeClient::class, function () {
+            $secretKey = config('stripe.secret_key');
+
+            if (!$secretKey) {
+                throw new \RuntimeException('Stripe secret key is not configured.');
+            }
+
+            return new \Stripe\StripeClient($secretKey);
+        });
     }
 
     /**

@@ -202,9 +202,19 @@ export const createBooking = (payload: {
   check_out?: string;
   guests: number;
   total_price: number;
+  currency?: string;
+  payment_intent_id?: string;
 }) => api.post("/api/my-bookings", payload);
 
 export const cancelBooking = (id: number) => api.post(`/api/my-bookings/${id}/cancel`);
+
+export const createPaymentIntent = (payload: {
+  amount: number;
+  currency?: string;
+  description?: string;
+  metadata?: Record<string, string>;
+  amount_in_minor?: boolean;
+}) => api.post("/api/payments/intent", payload);
 
 /** Khởi động: nếu trong localStorage đã có token thì gắn vào header ngay */
 (() => {
