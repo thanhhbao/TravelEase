@@ -90,6 +90,36 @@ Route::post('/email/verification-notification', [EmailVerificationNotificationCo
     ->middleware(['auth:sanctum', 'throttle:6,1'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+// ===== Flights =====
+use App\Http\Controllers\FlightController;
+
+Route::get('/flights', [FlightController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::get('/flights/{id}', [FlightController::class, 'show'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+// ===== Hotels =====
+use App\Http\Controllers\HotelController;
+
+Route::get('/hotels', [HotelController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::get('/hotels/{id}', [HotelController::class, 'show'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+// ===== Tickets =====
+use App\Http\Controllers\TicketController;
+
+Route::middleware('auth:sanctum')->get('/tickets', [TicketController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->get('/tickets/{id}', [TicketController::class, 'show'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->post('/tickets/{id}/cancel', [TicketController::class, 'cancel'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 // ===== Contact Support =====
 Route::post('/contact', [ContactController::class, 'store'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
