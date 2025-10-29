@@ -71,10 +71,12 @@ class PaymentController extends Controller
                 'amount_minor' => $amountMinor,
                 'message' => $exception->getMessage(),
                 'code' => $exception->getStripeCode(),
+                'type' => $exception->getError()->type ?? null,
             ]);
 
+            $errorMessage = $this->getStripeErrorMessage($exception);
             throw ValidationException::withMessages([
-                'stripe' => 'Unable to initiate payment at the moment. Please try again later.',
+                'stripe' => $errorMessage,
             ]);
         }
 
@@ -106,5 +108,31 @@ class PaymentController extends Controller
         }
 
         return app(StripeClient::class);
+    }
+
+    private function getStripeErrorMessage(ApiErrorException $exception): string
+    {
+        $code = $exception->getStripeCode();
+        $type = $exception->getError()->type ?? null;
+
+        return match ($code) {
+            'card_declined' => 'Your card was declined. Please try a different payment method or contact your bank.',
+            'expired_card' => 'Your card has expired. Please use a different card.',
+            'incorrect_cvc' => 'The security code (CVC) is incorrect. Please check and try again.',
+            'processing_error' => 'An error occurred while processing your payment. Please try again.',
+            'incorrect_number' => 'The card number is incorrect. Please check and try again.',
+            'invalid_expiry_month' => 'The expiration month is invalid. Please check and try again.',
+            'invalid_expiry_year' => 'The expiration year is invalid. Please check and try again.',
+            'invalid_cvc' => 'The security code is invalid. Please check and try again.',
+            default => match ($type) {
+                'card_error' => 'There was an issue with your card. Please check your details and try again.',
+                'invalid_request_error' => 'Invalid payment request. Please contact support if this persists.',
+                'api_connection_error' => 'Connection error. Please check your internet and try again.',
+                'api_error' => 'Payment service temporarily unavailable. Please try again later.',
+                'authentication_error' => 'Payment authentication failed. Please contact support.',
+                'rate_limit_error' => 'Too many payment attempts. Please wait a moment and try again.',
+                default => 'Unable to process payment. Please try again or contact support.',
+            },
+        };
     }
 }

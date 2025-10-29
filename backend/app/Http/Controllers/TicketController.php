@@ -24,7 +24,7 @@ class TicketController extends Controller
         }
 
         $tickets = $query->orderBy('created_at', 'desc')
-            ->paginate($request->get('per_page', 10));
+            ->get();
 
         return response()->json($tickets);
     }
@@ -46,6 +46,37 @@ class TicketController extends Controller
         }
 
         return response()->json($ticket);
+    }
+
+    /**
+     * Create a new ticket for the authenticated user
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+
+        $validated = $request->validate([
+            'flightId' => 'required|integer|exists:flights,id',
+            'passengers' => 'required|array|min:1',
+            'passengers.*.name' => 'required|string|max:255',
+            'passengers.*.dateOfBirth' => 'required|date',
+            'passengers.*.passportNumber' => 'required|string|max:20',
+            'contactEmail' => 'required|email|max:255',
+            'contactPhone' => 'required|string|max:20',
+            'totalPrice' => 'required|numeric|min:0',
+        ]);
+
+        $ticket = Ticket::create([
+            'user_id' => $user->id,
+            'flight_id' => $validated['flightId'],
+            'passengers' => $validated['passengers'],
+            'contact_email' => $validated['contactEmail'],
+            'contact_phone' => $validated['contactPhone'],
+            'total_price' => $validated['totalPrice'],
+            'status' => 'pending',
+        ]);
+
+        return response()->json($ticket->load('flight'), 201);
     }
 
     /**

@@ -8,30 +8,34 @@ export interface Passenger {
 }
 
 export interface Ticket {
-  id: number;
-  userId: number;
-  flightId: number;
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-  totalPrice: number;
-  status: "pending" | "confirmed" | "cancelled";
-  createdAt: string;
-  flight?: {
-    id: number; // THÊM: Cần cho Link chi tiết chuyến bay
-    airline: string;
-    flightNumber: string;
-    fromAirport: string;
-    toAirport: string;
+  id: number;
+  user_id: number;
+  flight_id: number;
+  passengers: Passenger[];
+  contact_email: string;
+  contact_phone: string;
+  total_price: number | string;
+  status: "pending" | "confirmed" | "cancelled";
+  created_at: string;
+  flight?: {
+    id: number; // THÊM: Cần cho Link chi tiết chuyến bay
+    airline: string;
+    flight_number: string;
+    fromAirport: string;
+    toAirport: string;
 
-    // THÊM CÁC TRƯỜNG CITY
-    departure_city: string; // THÊM
-    arrival_city: string;   // THÊM
+    // THÊM CÁC TRƯỜNG CITY
+    departureCity: string; // THÊM
+    arrivalCity: string;   // THÊM
 
-    // SỬA: Đổi tên thuộc tính thời gian (từ camelCase sang snake_case) để khớp với lỗi bạn báo
-    departure_time: string; // ISO
-    arrival_time: string;   // ISO
-  };
+    // SỬA: Đổi tên thuộc tính thời gian (từ camelCase sang snake_case) để khớp với lỗi bạn báo
+    departure_time: string; // ISO
+    arrival_time: string;   // ISO
+
+    // THÊM: duration và class từ backend
+    duration?: string;
+    class?: string;
+  };
 }
 
 export interface CreateTicketPayload {
@@ -72,14 +76,14 @@ export const ticketsService = {
       const now = new Date().toISOString();
       const fake: Ticket = {
         id: Date.now(),
-        userId: payload.userId ?? 1, // hoặc lấy từ auth store
-        flightId: payload.flightId,
+        user_id: payload.userId ?? 1, // hoặc lấy từ auth store
+        flight_id: payload.flightId,
         passengers: payload.passengers,
-        contactEmail: payload.contactEmail,
-        contactPhone: payload.contactPhone,
-        totalPrice: payload.totalPrice,
+        contact_email: payload.contactEmail,
+        contact_phone: payload.contactPhone,
+        total_price: payload.totalPrice,
         status: "pending",
-        createdAt: now,
+        created_at: now,
       };
       memory.push(fake);
       return fake;
@@ -94,19 +98,21 @@ export const ticketsService = {
   async getMyTickets(userId: number): Promise<Ticket[]> {
     try {
       const server = await api
-        .get<Ticket[]>("/api/tickets", { params: { userId } })
+        .get<Ticket[]>("/api/tickets")
         .then((r) => r.data);
 
-      return uniqById([...server, ...memory]).filter((t) => t.userId === userId);
-    } catch {
+      console.log('API Response:', server); // Debug log
+      return uniqById([...server, ...memory]).filter((t) => t.user_id === userId);
+    } catch (error) {
+      console.error('API Error:', error); // Debug log
       try {
         // mock file không nhận query → đọc toàn bộ rồi filter
         const res = await fetch("/mock/tickets.json");
         if (!res.ok) throw new Error("mock not found");
         const mock = (await res.json()) as Ticket[];
-        return uniqById([...mock, ...memory]).filter((t) => t.userId === userId);
+        return uniqById([...mock, ...memory]).filter((t) => t.user_id === userId);
       } catch {
-        return memory.filter((t) => t.userId === userId);
+        return memory.filter((t) => t.user_id === userId);
       }
     }
   },

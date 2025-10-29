@@ -39,7 +39,10 @@ class BookingController extends Controller
     {
         $user = Auth::user();
 
-        $query = Booking::where('user_id', $user->id);
+        // Eager-load related models (hotel, room, flight) so the frontend
+        // receives nested objects and can render hotel/room details.
+        $query = Booking::with(['hotel', 'room', 'flight'])
+            ->where('user_id', $user->id);
 
         // Filter by status
         if ($request->has('status') && in_array($request->status, ['pending', 'confirmed', 'cancelled'])) {
@@ -115,7 +118,8 @@ class BookingController extends Controller
             'hotel_id' => 'nullable|integer',
             'room_id' => 'nullable|integer',
             'flight_id' => 'nullable|integer',
-            'check_in' => 'nullable|date|after:today',
+            // allow check-in today or later (previously required strictly after today)
+            'check_in' => 'nullable|date|after_or_equal:today',
             'check_out' => 'nullable|date|after:check_in',
             'guests' => 'required|integer|min:1',
             'total_price' => 'required|numeric|min:0',
@@ -124,12 +128,12 @@ class BookingController extends Controller
         ]);
 
         // Ensure at least hotel or flight is provided
-        if (!$validated['hotel_id'] && !$validated['flight_id']) {
+        if (!$request->input('hotel_id') && !$request->input('flight_id')) {
             return response()->json(['message' => 'Either hotel_id or flight_id must be provided'], 422);
         }
 
         // For hotel bookings, check_in and check_out are required
-        if ($validated['hotel_id'] && (!$validated['check_in'] || !$validated['check_out'])) {
+        if ($request->input('hotel_id') && (!$request->input('check_in') || !$request->input('check_out'))) {
             return response()->json(['message' => 'check_in and check_out are required for hotel bookings'], 422);
         }
 
@@ -156,10 +160,12 @@ class BookingController extends Controller
                     'payment_intent_id' => $paymentIntentId,
                     'message' => $exception->getMessage(),
                     'code' => $exception->getStripeCode(),
+                    'type' => $exception->getError()->type ?? null,
                 ]);
 
+                $errorMessage = $this->getStripeErrorMessage($exception);
                 throw ValidationException::withMessages([
-                    'payment_intent_id' => 'Unable to verify payment. Please try again.',
+                    'payment_intent_id' => $errorMessage,
                 ]);
             }
 
@@ -225,5 +231,31 @@ class BookingController extends Controller
         }
 
         return app(StripeClient::class);
+    }
+
+    private function getStripeErrorMessage(ApiErrorException $exception): string
+    {
+        $code = $exception->getStripeCode();
+        $type = $exception->getError()->type ?? null;
+
+        return match ($code) {
+            'card_declined' => 'Your card was declined. Please try a different payment method or contact your bank.',
+            'expired_card' => 'Your card has expired. Please use a different card.',
+            'incorrect_cvc' => 'The security code (CVC) is incorrect. Please check and try again.',
+            'processing_error' => 'An error occurred while processing your payment. Please try again.',
+            'incorrect_number' => 'The card number is incorrect. Please check and try again.',
+            'invalid_expiry_month' => 'The expiration month is invalid. Please check and try again.',
+            'invalid_expiry_year' => 'The expiration year is invalid. Please check and try again.',
+            'invalid_cvc' => 'The security code is invalid. Please check and try again.',
+            default => match ($type) {
+                'card_error' => 'There was an issue with your card. Please check your details and try again.',
+                'invalid_request_error' => 'Invalid payment request. Please contact support if this persists.',
+                'api_connection_error' => 'Connection error. Please check your internet and try again.',
+                'api_error' => 'Payment service temporarily unavailable. Please try again later.',
+                'authentication_error' => 'Payment authentication failed. Please contact support.',
+                'rate_limit_error' => 'Too many payment attempts. Please wait a moment and try again.',
+                default => 'Unable to verify payment. Please try again or contact support.',
+            },
+        };
     }
 }

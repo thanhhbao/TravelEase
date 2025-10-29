@@ -10,8 +10,10 @@ class Flight extends Model
     protected $fillable = [
         'airline',
         'flight_number',
+        'from_airport',
         'logo',
         'from_city',
+        'to_airport',
         'to_city',
         'departure_time',
         'arrival_time',
@@ -24,6 +26,33 @@ class Flight extends Model
     protected $casts = [
         'price' => 'decimal:2',
     ];
+
+    protected $appends = [
+        'fromAirport',
+        'toAirport',
+        'departureCity',
+        'arrivalCity',
+    ];
+
+    public function getFromAirportAttribute()
+    {
+        return $this->attributes['from_airport'];
+    }
+
+    public function getToAirportAttribute()
+    {
+        return $this->attributes['to_airport'];
+    }
+
+    public function getDepartureCityAttribute()
+    {
+        return $this->attributes['from_city'];
+    }
+
+    public function getArrivalCityAttribute()
+    {
+        return $this->attributes['to_city'];
+    }
 
     public function bookings(): HasMany
     {

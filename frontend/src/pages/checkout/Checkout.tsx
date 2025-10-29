@@ -14,6 +14,7 @@ import axios from "axios";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { createBooking, createPaymentIntent } from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 
 type LocationState = {
   hotelId: number;
@@ -102,7 +103,8 @@ export default function Checkout() {
   const [bookingResult, setBookingResult] = useState<unknown | null>(null);
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [formErrors, setFormErrors] = useState<string[]>([]);
+
+  const { user, loading: authLoading } = useAuth();
   const bookingSummary = useMemo(
     () => (isBookingResult(bookingResult) ? bookingResult : null),
     [bookingResult]
@@ -138,21 +140,30 @@ export default function Checkout() {
       total_price: amount,
     };
 
-    if (data.hotelId) {
-      payload.hotel_id = data.hotelId;
-      if (data.roomId) payload.room_id = data.roomId;
-      if (data.checkIn) payload.check_in = data.checkIn;
-      if (data.checkOut) payload.check_out = data.checkOut;
-    }
-
-    if (data.flightId) {
-      payload.flight_id = data.flightId;
-    }
+    if (data.hotelId) payload.hotel_id = data.hotelId;
+    if (data.roomId) payload.room_id = data.roomId;
+    if (data.flightId) payload.flight_id = data.flightId;
+    if (data.checkIn) payload.check_in = data.checkIn;
+    if (data.checkOut) payload.check_out = data.checkOut;
 
     return payload;
   }, [amount, data]);
 
   const fetchIntent = useCallback(async () => {
+    // Prevent unauthenticated requests — backend expects an authenticated user
+    if (authLoading) return; // still determining auth status
+    if (!user) {
+      setIntentState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Please sign in to complete your payment.",
+        clientSecret: "",
+        publishableKey: "",
+        paymentIntentId: "",
+      }));
+      return;
+    }
+
     setIntentState((prev) => ({
       ...prev,
       loading: true,
@@ -166,24 +177,33 @@ export default function Checkout() {
       booking_type: data.hotelId ? "hotel" : data.flightId ? "flight" : "custom",
       guests: String(data.guests),
       nights: String(data.nights),
-      hotel_name: data.hotelName,
-      hotel_slug: data.hotelSlug,
-      room_name: data.roomName,
-      city: data.city,
-      country: data.country,
+      city: data.city || "Unknown",
+      country: data.country || "Unknown",
     };
 
-    if (data.hotelId) metadata.hotel_id = String(data.hotelId);
-    if (data.roomId) metadata.room_id = String(data.roomId);
-    if (data.flightId) metadata.flight_id = String(data.flightId);
-    if (data.checkIn) metadata.check_in = data.checkIn;
-    if (data.checkOut) metadata.check_out = data.checkOut;
+    if (data.hotelId) {
+      metadata.hotel_name = data.hotelName || "Unknown Hotel";
+      metadata.hotel_slug = data.hotelSlug || "";
+      metadata.room_name = data.roomName || "Unknown Room";
+      metadata.hotel_id = String(data.hotelId);
+      metadata.room_id = String(data.roomId);
+      if (data.checkIn) metadata.check_in = data.checkIn;
+      if (data.checkOut) metadata.check_out = data.checkOut;
+    }
+
+    if (data.flightId) {
+      metadata.flight_id = String(data.flightId);
+    }
 
     try {
+      const description = data.flightId
+        ? `TravelEase flight booking for ${data.guests} passenger${data.guests > 1 ? 's' : ''}`
+        : `TravelEase booking for ${data.hotelName}`;
+
       const { data: intent } = await createPaymentIntent({
         amount,
         currency: "usd",
-        description: `TravelEase booking for ${data.hotelName}`,
+        description,
         metadata,
       });
 
@@ -191,26 +211,45 @@ export default function Checkout() {
         loading: false,
         error: "",
         clientSecret: intent.clientSecret,
-        publishableKey: intent.publishableKey,
+
+        publishableKey: intent.publishableKey ?? (import.meta.env.STRIPE_PUBLISHABLE_KEY ?? ""),
         paymentIntentId: intent.paymentIntentId,
         currency: intent.currency ?? "usd",
       });
     } catch (error) {
       let message = "Unable to initialise payment. Please try again.";
+      let isRetryable = false;
 
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 401) {
           message = "Please sign in to complete your payment.";
+        } else if (error.response?.status === 429) {
+          message = "Too many payment attempts. Please wait a moment and try again.";
+          isRetryable = true;
+        } else if (error.response && error.response.status >= 500) {
+          message = "Payment service temporarily unavailable. Please try again in a few minutes.";
+          isRetryable = true;
         } else {
           const responseData = error.response?.data as
-            | { message?: string; stripe?: string; payment?: string }
+            | { message?: string; stripe?: string; payment?: string; errors?: Record<string, string[]> }
             | undefined;
           message =
             responseData?.stripe ??
             responseData?.payment ??
             responseData?.message ??
             message;
+
+          // Check if error is retryable based on content
+          if (message.includes('Connection error') ||
+              message.includes('temporarily unavailable') ||
+              message.includes('Please try again')) {
+            isRetryable = true;
+          }
         }
+      } else {
+        // Network errors are usually retryable
+        message = "Connection error. Please check your internet and try again.";
+        isRetryable = true;
       }
 
       setIntentState({
@@ -257,7 +296,6 @@ export default function Checkout() {
     setBookingResult(null);
     setBookingMessage(null);
     setIsProcessingPayment(false);
-    setFormErrors([]);
   }, []);
 
   return (
@@ -269,7 +307,6 @@ export default function Checkout() {
             active={step >= 1}
             title="Travel Detail"
             onClick={() => {
-              setFormErrors([]);
               setStep(1);
             }}
           />
@@ -459,7 +496,6 @@ export default function Checkout() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
-                    setFormErrors([]);
                     setStep(1);
                   }}
                   className="px-5 py-3 rounded-xl border border-slate-200 hover:bg-slate-50"
@@ -550,12 +586,12 @@ export default function Checkout() {
             <div className="flex items-start gap-3">
               <img
                 src={data.thumbnail}
-                alt={data.hotelName}
+                alt={data.flightId ? "Flight" : data.hotelName}
                 className="h-16 w-16 rounded-lg object-cover"
               />
               <div className="flex-1">
                 <div className="font-semibold text-slate-900 leading-tight">
-                  {data.hotelName}
+                  {data.flightId ? "Flight Booking" : data.hotelName}
                 </div>
                 <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center gap-1">
@@ -565,13 +601,26 @@ export default function Checkout() {
                   <span>128 Reviews</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                    {data.checkIn}
-                  </span>
-                  <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">1 PM</span>
-                  <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                    {data.nights} Nights
-                  </span>
+                  {data.flightId ? (
+                    <>
+                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                        {data.guests} Passenger{data.guests > 1 ? 's' : ''}
+                      </span>
+                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                        Flight #{data.flightId}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                        {data.checkIn}
+                      </span>
+                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">1 PM</span>
+                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                        {data.nights} Nights
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div className="mt-2 text-xs text-slate-600 flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
@@ -698,10 +747,24 @@ function StripePaymentForm({
           const responseData = error.response?.data as
             | { message?: string; errors?: Record<string, string[]> }
             | undefined;
-          friendlyMessage =
-            responseData?.message ??
-            responseData?.errors?.payment_intent_id?.[0] ??
-            friendlyMessage;
+
+          // Prefer a clear message from the server, otherwise aggregate validation errors
+          if (responseData?.message) {
+            friendlyMessage = responseData.message;
+          } else if (responseData?.errors) {
+            // Collect first message of each error field
+            const messages: string[] = [];
+            for (const key of Object.keys(responseData.errors)) {
+              const val = responseData.errors[key];
+              if (Array.isArray(val) && val.length) messages.push(val[0]);
+            }
+            if (messages.length) friendlyMessage = messages.join(' ');
+          }
+
+          // Log full server response to the console for debugging
+          // (developer-only; can be removed later)
+          // eslint-disable-next-line no-console
+          console.error('Booking error response:', error.response?.data);
         }
       }
 
@@ -804,28 +867,22 @@ function Input({
   variant?: "default" | "glass";
   inputClassName?: string;
 }) {
-  const isGlass = variant === "glass";
   return (
-    <label className={`block ${className}`}>
-      <div
-        className={`text-sm font-medium mb-1 ${
-          isGlass ? "text-white/80" : "text-slate-700"
-        }`}
-      >
-        {label}
-      </div>
+    <div className={`flex flex-col ${className}`}>
+      <label className="text-sm font-medium text-slate-700 mb-1">{label}</label>
       <input
         type={type}
         placeholder={placeholder}
-        className={`w-full px-4 py-3 rounded-xl border focus:outline-none transition ${inputClassName} ${
-          isGlass
-            ? "border-white/20 bg-white/10 text-white placeholder:text-white/60 focus:ring-2 focus:ring-white/40 focus:border-white/60"
-            : "border-slate-200 focus:ring-2 focus:ring-slate-900/10"
-        }`}
+        className={`w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 ${
+          variant === "glass"
+            ? "bg-white/40 backdrop-blur-md border-white/30"
+            : "bg-white"
+        } ${inputClassName}`}
       />
-    </label>
+    </div>
   );
 }
+
 
 function Row({ label, value }: { label: string; value: string }) {
   return (

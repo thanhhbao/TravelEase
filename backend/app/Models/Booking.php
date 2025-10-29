@@ -32,6 +32,11 @@ class Booking extends Model
         'payment_status' => 'string',
     ];
 
+    /**
+     * Append computed attributes to array / JSON form.
+     */
+    protected $appends = ['type'];
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -50,5 +55,19 @@ class Booking extends Model
     public function flight(): BelongsTo
     {
         return $this->belongsTo(Flight::class);
+    }
+
+    /**
+     * Expose a computed `type` attribute for the frontend.
+     *
+     * Returns 'hotel' when hotel_id is present, 'flight' when flight_id is present,
+     * otherwise 'unknown'. This will be serialized into JSON responses so the
+     * frontend can easily filter bookings by type.
+     */
+    public function getTypeAttribute(): string
+    {
+        if ($this->hotel_id !== null) return 'hotel';
+        if ($this->flight_id !== null) return 'flight';
+        return 'unknown';
     }
 }

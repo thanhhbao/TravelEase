@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\Webhook;
 use UnexpectedValueException;
+use App\Models\Booking;
 
 class StripeWebhookController extends Controller
 {
@@ -49,7 +50,42 @@ class StripeWebhookController extends Controller
             'id' => $event->id,
         ]);
 
+        // Handle payment failure events
+        if ($event->type === 'payment_intent.payment_failed') {
+            $this->handlePaymentFailed($event->data->object);
+        }
+
         return response()->json(['received' => true]);
+    }
+
+    private function handlePaymentFailed($paymentIntent): void
+    {
+        $paymentIntentId = $paymentIntent->id;
+
+        Log::warning('stripe.webhook.payment_failed', [
+            'payment_intent_id' => $paymentIntentId,
+            'last_payment_error' => $paymentIntent->last_payment_error ?? null,
+        ]);
+
+        // Find booking associated with this payment intent
+        $booking = Booking::where('stripe_payment_intent_id', $paymentIntentId)->first();
+
+        if ($booking) {
+            // Update booking status to reflect payment failure
+            $booking->update([
+                'payment_status' => 'failed',
+                'status' => 'pending', // Keep booking as pending, user can retry payment
+            ]);
+
+            Log::info('booking.payment_failed_updated', [
+                'booking_id' => $booking->id,
+                'payment_intent_id' => $paymentIntentId,
+            ]);
+        } else {
+            Log::warning('stripe.webhook.payment_failed_no_booking', [
+                'payment_intent_id' => $paymentIntentId,
+            ]);
+        }
     }
 }
 

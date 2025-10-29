@@ -123,6 +123,9 @@ use App\Http\Controllers\TicketController;
 Route::middleware('auth:sanctum')->get('/tickets', [TicketController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+Route::middleware('auth:sanctum')->post('/tickets', [TicketController::class, 'store'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 Route::middleware('auth:sanctum')->get('/tickets/{id}', [TicketController::class, 'show'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 

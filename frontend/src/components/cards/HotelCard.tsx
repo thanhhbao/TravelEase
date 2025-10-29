@@ -65,7 +65,7 @@ export default function HotelCard({ hotel, className = '' }: HotelCardProps) {
 
         {/* Amenities */}
         <div className="flex flex-wrap gap-2">
-          {hotel.amenities.slice(0, 4).map((amenity) => (
+          {hotel.amenities?.slice(0, 4).map((amenity) => (
             <span
               key={amenity}
               className="px-3 py-1 bg-primary-50 text-primary-700 text-xs font-medium rounded-full border border-primary-100 hover:bg-primary-100 transition-colors duration-200"
@@ -73,7 +73,7 @@ export default function HotelCard({ hotel, className = '' }: HotelCardProps) {
               {amenity}
             </span>
           ))}
-          {hotel.amenities.length > 4 && (
+          {hotel.amenities && hotel.amenities.length > 4 && (
             <span className="px-3 py-1 bg-secondary-100 text-secondary-700 text-xs font-medium rounded-full border border-secondary-200">
               +{hotel.amenities.length - 4} more
             </span>
@@ -84,7 +84,7 @@ export default function HotelCard({ hotel, className = '' }: HotelCardProps) {
         <div className="flex items-center justify-between pt-4 border-t border-secondary-100">
           <div className="flex items-center space-x-1 text-sm text-secondary-600">
             <Users className="h-4 w-4 text-primary-500" />
-            <span className="font-medium">Up to {Math.max(...hotel.rooms.map(r => r.maxGuests))} guests</span>
+            <span className="font-medium">Up to {Math.max(...(hotel as any).rooms?.map((r: any) => r.maxGuests) || [1])} guests</span>
           </div>
           <Link
             to={`/hotels/${hotel.slug}`}

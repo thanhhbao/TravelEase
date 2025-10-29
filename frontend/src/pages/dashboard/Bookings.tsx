@@ -18,10 +18,11 @@ import {
   type Booking,
   type BookingsResponse,
 } from '../../services/bookings';
+import SafeImage from '../../components/common/SafeImage'; // Thêm import SafeImage để fix lỗi không tìm thấy tên SafeImage
 // Sẽ thay thế BookingCard cũ bằng UI mới ngay trong component này
 // import BookingCard from '../../components/cards/BookingCard';
 import Pagination from '../../components/common/Pagination';
-import FilterPanel from '../../components/common/FilterPanel'; // Vẫn giữ nếu bạn muốn dùng lại FilterPanel component, hoặc thay thế bằng UI filter inline
+// FilterPanel intentionally unused in this trimmed dashboard view
 
 // --- Component BookingCard inline (UI mới cho Hotel Booking) ---
 
@@ -62,37 +63,55 @@ type BookingCardProps = {
   onViewDetail: (id: number) => void;
 };
 
-// Hàm định dạng tiền tệ
-const formatCurrency = (amount: number) => {
-  // ... (giữ nguyên)
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount);
+// Hàm định dạng tiền tệ (cho phép override currency)
+const formatCurrency = (amount: number, currencyCode = 'USD') => {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currencyCode || 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(Number(amount));
+  } catch (e) {
+    return `${amount} ${currencyCode || 'USD'}`;
+  }
 };
 
 
 const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) => {
-  // Giả sử bạn đã sửa Booking interface để có thuộc tính 'type'
+  // Only render hotel bookings in this card
   if (booking.type !== 'hotel') return null;
 
-  // SỬA TẠI ĐÂY: Truy cập trực tiếp thuộc tính 'hotel' và 'room'
+  // Access hotel and room; normalized data provides placeholders if missing
   const hotel = booking.hotel;
   const room = booking.room;
-
-  // Kiểm tra xem đây có phải là booking khách sạn hợp lệ không
-  if (!hotel) return null;
 
   const status = booking.status;
   const statusColor = getStatusColor(status);
   const statusIcon = getStatusIcon(status);
 
-  // Dùng URL ảnh từ hotel hoặc ảnh mặc định
-  const mockImage = hotel.image || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&h=250&fit=crop';
+  // Select image: prefer room image, then hotel's thumbnail, then hotel's first image, then fallback
+  const mockImage =
+    room?.images?.[0] || hotel?.thumbnail || hotel?.images?.[0] || hotel?.image || '/placeholder-hotel.jpg';
+
+  // Debug: determine which source we used for the image
+  const imageSource = room?.images?.[0]
+    ? 'room image'
+    : hotel?.thumbnail
+    ? 'hotel thumbnail'
+    : hotel?.images?.[0]
+    ? 'hotel image'
+    : hotel?.image
+    ? 'hotel image (legacy)'
+    : 'fallback';
 
   // Hàm định dạng ngày
+  
+  // Debug log so we can inspect the exact URL passed to SafeImage in browser console
+  // This will help determine if the API returned the URL or not
+  // (temporary — remove when debugging finished)
+  console.debug(`booking #${booking.id} image src:`, mockImage, 'source:', imageSource);
+
   const formatDate = (dateString?: string) => { // Chấp nhận string | undefined
     if (!dateString) return 'N/A';
     try {
@@ -111,20 +130,28 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
       className="bg-white rounded-2xl shadow-lg border-2 border-sky-100 overflow-hidden hover:shadow-xl hover:border-sky-200 transition-all duration-300"
     >
       <div className="flex flex-col md:flex-row">
-        {/* Hotel Image */}
-        <div className="md:w-1/3 h-64 md:h-auto relative overflow-hidden">
-          <img
-            src={mockImage}
-            alt={hotel.name}
-            className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
-          />
-          <div className="absolute top-4 right-4">
-            <span className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${statusColor} backdrop-blur-sm`}>
-              {statusIcon}
-              <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
-            </span>
+          {/* Hotel Image */}
+          <div className="md:w-1/3 h-64 md:h-auto relative overflow-hidden">
+            <SafeImage
+              src={mockImage}
+              alt={hotel?.name || `Hotel #${booking.hotel_id ?? 'N/A'}`}
+              className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
+              fallback="/placeholder-hotel.jpg"
+            />
+            <div className="absolute top-4 right-4">
+              <span className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${statusColor} backdrop-blur-sm`}>
+                {statusIcon}
+                <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+              </span>
+            </div>
+
+            {/* Debug badge for image source (temporary) */}
+            <div className="absolute top-4 left-4">
+              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-white/80 text-sky-700 border border-sky-100 shadow-sm">
+                {imageSource}
+              </span>
+            </div>
           </div>
-        </div>
 
         {/* Hotel Details */}
         <div className="flex-1 p-6">
@@ -134,11 +161,11 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
                 <Hotel className="h-5 w-5 text-sky-600" />
                 <span className="text-xs font-semibold text-sky-600 uppercase tracking-wide">Hotel</span>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-1">{hotel.name}</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-1">{hotel?.name || `Hotel #${booking.hotel_id ?? 'N/A'}`}</h3>
               <div className="flex items-center text-gray-600">
                 <MapPin className="h-4 w-4 mr-1" />
                 {/* Sử dụng city và country từ hotel */}
-                <span>{hotel.city}, {hotel.country}</span>
+                <span>{hotel?.city || 'Unknown'}, {hotel?.country || ''}</span>
               </div>
             </div>
           </div>
@@ -170,8 +197,23 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
             <div>
               <p className="text-xs text-gray-500 mb-1">Total Price</p>
               <p className="text-3xl font-bold bg-gradient-to-r from-sky-600 to-cyan-600 bg-clip-text text-transparent">
-                {formatCurrency(booking.total_price)}
+                {formatCurrency(booking.total_price, booking.currency || 'USD')}
               </p>
+
+              {/* Payment status */}
+              <div className="mt-2">
+                <span className="text-xs text-gray-500 mr-2">Payment</span>
+                {(() => {
+                  const ps = booking.payment_status || 'unpaid';
+                  const label = ps === 'succeeded' ? 'Paid' : ps === 'unpaid' ? 'Unpaid' : ps.charAt(0).toUpperCase() + ps.slice(1);
+                  const color = ps === 'succeeded' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : ps === 'unpaid' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-gray-100 text-gray-700 border-gray-200';
+                  return (
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${color}`}>
+                      {label}
+                    </span>
+                  );
+                })()}
+              </div>
             </div>
             <div className="flex space-x-3">
               <button
@@ -226,16 +268,37 @@ export default function Bookings() {
           per_page: 10,
           type: 'hotel', // Gửi mặc định type=hotel để chỉ lấy hotel bookings
           ...Object.fromEntries(
-            Object.entries(filters).filter(([key, value]) => value !== ''),
+            Object.entries(filters).filter(([, value]) => value !== ''),
           ),
         };
 
         const data = await bookingsService.getMyBookings(params);
-        // Lọc dữ liệu chỉ lấy Hotel Bookings ở client nếu API không hỗ trợ type=hotel
+
+  // Debug: print raw API response so we can inspect why items might be filtered out
+  console.debug('my-bookings response', data);
+
+  // Normalize bookings: ensure `type`, `currency` and `payment_status` exist so
+  // the UI doesn't accidentally filter out valid hotel bookings when backend
+  // doesn't include the computed `type` attribute or optional fields.
+        const normalizedItems = data.data.map((b) => {
+          const hotel = b.hotel || (b.hotel_id ? { id: b.hotel_id, name: `Hotel #${b.hotel_id}`, city: '', country: '', image: undefined } : undefined);
+          const room = b.room || (b.room_id ? { id: b.room_id, name: 'Standard', price_per_night: undefined } : undefined);
+
+          return {
+            ...b,
+            type: b.type || (b.hotel_id ? 'hotel' : b.flight_id ? 'flight' : 'unknown'),
+            currency: b.currency || 'USD',
+            payment_status: b.payment_status || (b.stripe_payment_intent_id ? 'succeeded' : 'unpaid'),
+            hotel,
+            room,
+          };
+        });
+
         const hotelBookingsData = {
           ...data,
-          data: data.data.filter((b) => b.type === 'hotel'),
+          data: normalizedItems.filter((b) => b.type === 'hotel'),
         };
+
         setBookingsData(hotelBookingsData);
       } catch (error) {
         console.error('Failed to load bookings:', error);

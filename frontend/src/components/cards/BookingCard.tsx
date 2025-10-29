@@ -1,5 +1,4 @@
 import { Calendar, MapPin, Users, X, Eye, Plane, Building } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import SafeImage from '../common/SafeImage';
 import type { Booking } from '../../services/bookings';
 
@@ -49,8 +48,17 @@ export default function BookingCard({ booking, onCancel, onViewDetail }: Booking
         <div className="md:w-1/3">
           <div className="h-48 md:h-full">
             <SafeImage
-              src={booking.hotel?.image || booking.flight?.airline ? `/airplane.png` : '/placeholder-hotel.jpg'}
-              alt={booking.hotel?.name || booking.flight?.flight_number || 'Booking'}
+              src={
+                // If the booking has a room with images, prefer the room image (matches room booked).
+                booking.room?.images && booking.room.images.length
+                  ? booking.room.images[0]
+                  : booking.hotel?.image
+                  ? booking.hotel.image
+                  : booking.flight
+                  ? `/airplane.png`
+                  : '/placeholder-hotel.jpg'
+              }
+              alt={booking.room?.name || booking.hotel?.name || booking.flight?.flight_number || 'Booking'}
               className="w-full h-full object-cover"
             />
           </div>

@@ -52,12 +52,12 @@ export default function BookingModal({
 
     try {
       const bookingPayload: CreateBookingPayload = {
-        hotelId: hotel.id,
-        roomId: room.id,
-        checkIn,
-        checkOut,
+        hotel_id: hotel.id,
+        room_id: room.id,
+        check_in: checkIn,
+        check_out: checkOut,
         guests,
-        totalPrice: calculateTotalPrice()
+        total_price: calculateTotalPrice()
       };
 
       await bookingsService.createBooking(bookingPayload);

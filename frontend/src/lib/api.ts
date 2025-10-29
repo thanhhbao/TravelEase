@@ -57,11 +57,11 @@ export function setAuthToken(token: string | null) {
     if (storage) storage.setItem(TOKEN_KEY, token);
     const bearer = `Bearer ${token}`;
     updateAuthHeader(api.defaults.headers, bearer);
-    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, bearer);
+    updateAuthHeader(api.defaults.headers.common, bearer);
   } else {
     if (storage) storage.removeItem(TOKEN_KEY);
     updateAuthHeader(api.defaults.headers, null);
-    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, null);
+    updateAuthHeader(api.defaults.headers.common, null);
   }
 }
 
@@ -222,6 +222,6 @@ export const createPaymentIntent = (payload: {
   if (token) {
     const bearer = `Bearer ${token}`;
     updateAuthHeader(api.defaults.headers, bearer);
-    updateAuthHeader((api.defaults.headers as AxiosHeaders & { common?: unknown }).common, bearer);
+    updateAuthHeader(api.defaults.headers.common, bearer);
   }
 })();

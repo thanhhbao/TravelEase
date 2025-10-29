@@ -94,11 +94,13 @@ export default function Tickets() {
 
     setIsLoading(true);
     try {
+      console.log('Loading tickets for user:', user.id); // Debug log
       const ticketData = await ticketsService.getMyTickets(user.id);
+      console.log('Loaded tickets:', ticketData); // Debug log
       setTickets(ticketData);
     } catch (error) {
       console.error('Failed to load tickets:', error);
-      toast.error('Failed to load flight tickets'); 
+      toast.error('Failed to load flight tickets');
     } finally {
       setIsLoading(false);
     }
@@ -146,11 +148,16 @@ export default function Tickets() {
               const statusConfig = getStatusConfig(ticket.status);
               const flight = ticket.flight;
               
-              if (!flight) return null; 
+              if (!flight) return null;
 
-              // Giả định duration/class có trong flight object nếu API trả về
-              const mockDuration = "N/A"; 
-              const mockClass = "Economy"; 
+              // Sử dụng duration/class từ flight data
+              const mockDuration = flight.duration || "N/A";
+              const mockClass = flight.class || "Economy";
+
+              // Format totalPrice properly
+              const formattedPrice = typeof ticket.total_price === 'string'
+                ? parseFloat(ticket.total_price)
+                : ticket.total_price;
 
               return (
                 <div
@@ -169,7 +176,7 @@ export default function Tickets() {
                             {flight.airline}
                           </h3>
                           <p className="text-sm text-gray-600">
-                            Flight {flight.flightNumber} • {mockClass} Class
+                            Flight {flight.flight_number} • {mockClass} Class
                           </p>
                         </div>
                       </div>
@@ -179,7 +186,7 @@ export default function Tickets() {
                           <span>{statusConfig.label}</span>
                         </span>
                         <div className="text-2xl font-bold bg-gradient-to-r from-sky-600 to-cyan-600 bg-clip-text text-transparent mt-2">
-                          {formatPrice(ticket.totalPrice)}
+                          {formatPrice(formattedPrice)}
                         </div>
                       </div>
                     </div>
@@ -197,7 +204,7 @@ export default function Tickets() {
                         <div className="text-3xl font-bold text-gray-900 mb-1">
                           {flight.fromAirport}
                         </div>
-                        <div className="text-sm text-gray-600 mb-2">{flight.departure_city}</div>
+                        <div className="text-sm text-gray-600 mb-2">{flight.departureCity}</div>
                         <div className="flex items-center space-x-2">
                           <Calendar className="h-4 w-4 text-gray-400" />
                           <span className="text-sm font-medium text-gray-700">
@@ -240,7 +247,7 @@ export default function Tickets() {
                         <div className="text-3xl font-bold text-gray-900 mb-1">
                           {flight.toAirport}
                         </div>
-                        <div className="text-sm text-gray-600 mb-2">{flight.arrival_city}</div>
+                        <div className="text-sm text-gray-600 mb-2">{flight.arrivalCity}</div>
                         <div className="flex items-center justify-end space-x-2">
                           <span className="text-sm font-medium text-gray-700">
                             {/* SỬA LỖI: Dùng arrival_time */}
@@ -285,7 +292,7 @@ export default function Tickets() {
                       <div className="text-sm text-gray-500">
                         <span className="font-medium text-gray-700">Ticket ID:</span> #{ticket.id}
                         <span className="mx-2">•</span>
-                        <span>Booked on {formatDate(ticket.createdAt)}</span>
+                        <span>Booked on {formatDate(ticket.created_at)}</span>
                       </div>
 
                       <div className="flex items-center space-x-3">

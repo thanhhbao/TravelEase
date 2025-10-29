@@ -84,7 +84,39 @@ export default function FlightDetails() {
 
   const seatTotal = selectedSeats.reduce((sum, s) => sum + (s.price || 0), 0);
 
-  const goPayment = () => setStep(3);
+  const goPayment = () => {
+    // send user to the shared checkout page which uses Stripe Elements
+    redirectToCheckout();
+  };
+
+  // Redirect to the global checkout page which already integrates Stripe.
+  const redirectToCheckout = () => {
+    const base = Math.round(flight!.price * 0.85);
+    const tax = Math.round(flight!.price * 0.15);
+    const total = Number((base + tax + seatTotal).toFixed(2));
+
+    navigate('/checkout', {
+      state: {
+        // Checkout expects some hotel-related fields; for flights we'll supply
+        // flight-specific keys and let Checkout detect flight by `flightId`.
+        hotelId: 0,
+        hotelName: flight!.airline,
+        hotelSlug: flight!.flightNumber,
+        roomId: 0,
+        roomName: flight!.class,
+        checkIn: '',
+        checkOut: '',
+        guests: pax,
+        nights: 1,
+        pricePerNight: flight!.price,
+        totalPrice: total,
+        thumbnail: flight!.logo,
+        city: `${flight!.from} → ${flight!.to}`,
+        country: '',
+        flightId: flight!.id,
+      },
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sky-50 via-white to-white text-slate-900">
@@ -199,7 +231,7 @@ export default function FlightDetails() {
                     selected={selectedSeats}
                     seatTotal={seatTotal}
                     onBackToSeats={() => setStep(2)}
-                    onPay={() => alert("Payment success (demo)")}
+                    onPay={() => redirectToCheckout()}
                   />
                 )}
 
