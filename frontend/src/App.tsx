@@ -13,6 +13,7 @@ import Flights from './pages/flights/Flight';
 
 // Dùng 1 component cho cả login & register
 import AuthPage from './pages/auth/AuthPage';
+import AuthCallback from './pages/auth/AuthCallback';
 import VerifyEmail from './pages/auth/VerifyEmail';
 import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
@@ -58,6 +59,7 @@ function App() {
             {/* Auth: cùng 1 component, tự nhận biết qua path (/login | /register) */}
             <Route path="/login" element={<AuthPage />} />
             <Route path="/register" element={<AuthPage />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />

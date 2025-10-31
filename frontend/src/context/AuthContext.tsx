@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { me, login as apiLogin, logout as apiLogout, register as apiRegister, getAuthToken } from "../lib/api";
+import { me, login as apiLogin, logout as apiLogout, register as apiRegister, getAuthToken, setAuthToken } from "../lib/api";
 
 type User = { id: number; name: string; email: string; email_verified_at: string | null };
 type AuthCtx = {

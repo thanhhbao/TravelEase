@@ -71,6 +71,15 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware('auth:sanctum')
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+// ===== Google OAuth =====
+use App\Http\Controllers\Auth\GoogleAuthController;
+
+Route::get('/auth/google', [GoogleAuthController::class, 'redirectToGoogle'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 // ===== Password reset (JSON) =====
 Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
