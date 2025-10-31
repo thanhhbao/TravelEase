@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { setAuthToken } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { useAuthStore } from "../../store/auth";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { refresh } = useAuth();
+  const bootstrap = useAuthStore((state) => state.bootstrap);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -22,7 +24,10 @@ export default function AuthCallback() {
 
       if (token) {
         setAuthToken(token);
-        await refresh();
+        await Promise.all([
+          refresh(),
+          bootstrap(),
+        ]);
         navigate("/my/bookings", { replace: true });
       } else {
         navigate("/login");
@@ -30,7 +35,7 @@ export default function AuthCallback() {
     };
 
     handleCallback();
-  }, [searchParams, navigate, refresh]);
+  }, [searchParams, navigate, refresh, bootstrap]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-cyan-50">

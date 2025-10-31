@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 
 class GoogleAuthController extends Controller
@@ -18,7 +16,7 @@ class GoogleAuthController extends Controller
     public function handleGoogleCallback()
     {
         try {
-            $googleUser = Socialite::driver('google')->user();
+            $googleUser = Socialite::driver('google')->stateless()->user();
 
             $user = User::where('google_id', $googleUser->getId())->first();
 
@@ -47,12 +45,13 @@ class GoogleAuthController extends Controller
 
             // Redirect to frontend with token
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
-            return redirect($frontendUrl . '?token=' . $token . '&login=google');
+            return redirect()->away($frontendUrl . '/auth/callback?token=' . $token . '&login=google');
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            report($e);
             // Redirect to frontend with error
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
-            return redirect($frontendUrl . '/login?error=google_auth_failed');
+            return redirect()->away($frontendUrl . '/auth/callback?error=google_auth_failed');
         }
     }
 }
