@@ -1639,7 +1639,7 @@ export default function Home() {
 
               <div className="space-y-5">
                 <h2 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
-                  Live travel deals, refreshed every few seconds
+                  Live travel deals
                 </h2>
                 <p className="max-w-xl text-base text-slate-600 md:text-lg">
                  Every few seconds the front card rotates—revealing a fresh set of perks curated by the TravelEase concierge team. Hover or tap to pin your favorite offer.
