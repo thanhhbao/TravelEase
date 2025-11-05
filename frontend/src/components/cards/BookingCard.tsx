@@ -49,14 +49,13 @@ export default function BookingCard({ booking, onCancel, onViewDetail }: Booking
           <div className="h-48 md:h-full">
             <SafeImage
               src={
-                // If the booking has a room with images, prefer the room image (matches room booked).
-                booking.room?.images && booking.room.images.length
-                  ? booking.room.images[0]
-                  : booking.hotel?.image
-                  ? booking.hotel.image
-                  : booking.flight
-                  ? `/airplane.png`
-                  : '/placeholder-hotel.jpg'
+                booking.previewImage ||
+                booking.room?.previewImage ||
+                (booking.room?.images && booking.room.images.length ? booking.room.images[0] : undefined) ||
+                booking.hotel?.thumbnail ||
+                (booking.hotel?.images && booking.hotel.images.length ? booking.hotel.images[0] : undefined) ||
+                booking.hotel?.image ||
+                (booking.flight ? `/airplane.png` : '/placeholder-hotel.jpg')
               }
               alt={booking.room?.name || booking.hotel?.name || booking.flight?.flight_number || 'Booking'}
               className="w-full h-full object-cover"

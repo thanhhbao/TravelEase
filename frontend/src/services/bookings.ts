@@ -20,8 +20,17 @@ export interface Booking {
   payment_status?: string;
   stripe_payment_intent_id?: string;
   hotel?: { id: number; name: string; city: string; country: string; image?: string; images?: string[]; thumbnail?: string };
-  room?: { id: number; name: string; price_per_night?: number; images?: string[] };
+  room?: {
+    id: number;
+    name: string;
+    price_per_night?: number;
+    images?: string[];
+    previewImage?: string;
+    image?: string;
+    thumbnail?: string;
+  };
   flight?: { id: number; airline: string; flight_number: string; departure_city: string; arrival_city: string; departure_time: string; arrival_time: string; price: number };
+  previewImage?: string;
 }
 
 export interface CreateBookingPayload {

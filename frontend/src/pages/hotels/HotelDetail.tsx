@@ -214,7 +214,7 @@ export default function HotelDetail() {
         nights,
         pricePerNight: selectedRoom.price,
         totalPrice,
-        thumbnail: hotel.thumbnail,
+        thumbnail: selectedRoom.images?.[0] ?? hotel.images?.[0] ?? hotel.thumbnail,
         city: hotel.city,
         country: hotel.country,
       },

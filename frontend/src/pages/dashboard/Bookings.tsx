@@ -22,6 +22,7 @@ import SafeImage from '../../components/common/SafeImage'; // Thêm import SafeI
 // Sẽ thay thế BookingCard cũ bằng UI mới ngay trong component này
 // import BookingCard from '../../components/cards/BookingCard';
 import Pagination from '../../components/common/Pagination';
+import { getBookingPreview } from '../../utils/bookingPreview';
 // FilterPanel intentionally unused in this trimmed dashboard view
 
 // --- Component BookingCard inline (UI mới cho Hotel Booking) ---
@@ -77,6 +78,85 @@ const formatCurrency = (amount: number, currencyCode = 'USD') => {
   }
 };
 
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const extractUrlFromObject = (item: Record<string, unknown>): string | undefined => {
+  const candidates = ['url', 'path', 'src', 'image', 'thumbnail'];
+  for (const key of candidates) {
+    const maybe = item[key];
+    if (isNonEmptyString(maybe)) return maybe;
+  }
+  return undefined;
+};
+
+const parseImages = (value: unknown): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (isNonEmptyString(item)) return item;
+        if (item && typeof item === 'object') {
+          return extractUrlFromObject(item as Record<string, unknown>);
+        }
+        return undefined;
+      })
+      .filter(isNonEmptyString);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(isNonEmptyString);
+      }
+    } catch {
+      // fall through to CSV fallback
+    }
+
+    return trimmed
+      .split(',')
+      .map((item) => item.trim().replace(/^"(.*)"$/, '$1'))
+      .filter((item) => item.length > 0);
+  }
+
+  return [];
+};
+
+const normalizeHotelMedia = (raw: Booking['hotel'] | undefined) => {
+  if (!raw) return undefined;
+
+  const images = parseImages(raw.images);
+  const fallbackImage = isNonEmptyString(raw.image) ? raw.image : undefined;
+  const thumbnail = isNonEmptyString(raw.thumbnail)
+    ? raw.thumbnail
+    : images[0] ?? fallbackImage;
+
+  return {
+    ...raw,
+    images,
+    thumbnail,
+  };
+};
+
+const normalizeRoomMedia = (raw: Booking['room'] | undefined) => {
+  if (!raw) return undefined;
+
+  const images = parseImages(raw.images);
+  const fromImageField = isNonEmptyString(raw.image) ? raw.image : undefined;
+  const fromThumbnailField = isNonEmptyString(raw.thumbnail) ? raw.thumbnail : undefined;
+  const previewImage = fromImageField ?? fromThumbnailField ?? images[0];
+
+  return {
+    ...raw,
+    images,
+    previewImage,
+  };
+};
+
 
 const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) => {
   // Only render hotel bookings in this card
@@ -92,25 +172,13 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
 
   // Select image: prefer room image, then hotel's thumbnail, then hotel's first image, then fallback
   const mockImage =
-    room?.images?.[0] || hotel?.thumbnail || hotel?.images?.[0] || hotel?.image || '/placeholder-hotel.jpg';
-
-  // Debug: determine which source we used for the image
-  const imageSource = room?.images?.[0]
-    ? 'room image'
-    : hotel?.thumbnail
-    ? 'hotel thumbnail'
-    : hotel?.images?.[0]
-    ? 'hotel image'
-    : hotel?.image
-    ? 'hotel image (legacy)'
-    : 'fallback';
-
-  // Hàm định dạng ngày
-  
-  // Debug log so we can inspect the exact URL passed to SafeImage in browser console
-  // This will help determine if the API returned the URL or not
-  // (temporary — remove when debugging finished)
-  console.debug(`booking #${booking.id} image src:`, mockImage, 'source:', imageSource);
+    booking.previewImage ||
+    room?.previewImage ||
+    room?.images?.[0] ||
+    hotel?.thumbnail ||
+    hotel?.images?.[0] ||
+    (isNonEmptyString(hotel?.image) ? hotel?.image : undefined) ||
+    '/placeholder-hotel.jpg';
 
   const formatDate = (dateString?: string) => { // Chấp nhận string | undefined
     if (!dateString) return 'N/A';
@@ -136,19 +204,11 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
               src={mockImage}
               alt={hotel?.name || `Hotel #${booking.hotel_id ?? 'N/A'}`}
               className="w-full h-full object-cover hover:scale-110 transition-transform duration-500"
-              fallback="/placeholder-hotel.jpg"
             />
             <div className="absolute top-4 right-4">
               <span className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border ${statusColor} backdrop-blur-sm`}>
                 {statusIcon}
                 <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
-              </span>
-            </div>
-
-            {/* Debug badge for image source (temporary) */}
-            <div className="absolute top-4 left-4">
-              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-white/80 text-sky-700 border border-sky-100 shadow-sm">
-                {imageSource}
               </span>
             </div>
           </div>
@@ -273,24 +333,74 @@ export default function Bookings() {
         };
 
         const data = await bookingsService.getMyBookings(params);
-
-  // Debug: print raw API response so we can inspect why items might be filtered out
-  console.debug('my-bookings response', data);
-
   // Normalize bookings: ensure `type`, `currency` and `payment_status` exist so
   // the UI doesn't accidentally filter out valid hotel bookings when backend
   // doesn't include the computed `type` attribute or optional fields.
-        const normalizedItems = data.data.map((b) => {
-          const hotel = b.hotel || (b.hotel_id ? { id: b.hotel_id, name: `Hotel #${b.hotel_id}`, city: '', country: '', image: undefined } : undefined);
-          const room = b.room || (b.room_id ? { id: b.room_id, name: 'Standard', price_per_night: undefined } : undefined);
+        const normalizedItems = data.data.map((raw) => {
+          const fallbackHotel = raw.hotel_id
+            ? {
+                id: raw.hotel_id,
+                name: `Hotel #${raw.hotel_id}`,
+                city: '',
+                country: '',
+                image: undefined,
+                images: [] as string[],
+                thumbnail: undefined,
+              }
+            : undefined;
+
+          const fallbackRoom = raw.room_id
+            ? {
+                id: raw.room_id,
+                name: 'Standard',
+                price_per_night: undefined,
+                images: [] as string[],
+                previewImage: undefined,
+                image: undefined,
+                thumbnail: undefined,
+              }
+            : undefined;
+
+          const hotel = normalizeHotelMedia(raw.hotel ?? fallbackHotel);
+          const room = normalizeRoomMedia(raw.room ?? fallbackRoom);
+
+          const type = raw.type || (raw.hotel_id ? 'hotel' : raw.flight_id ? 'flight' : 'unknown');
+          const currency = raw.currency || 'USD';
+          const paymentStatus =
+            raw.payment_status || (raw.stripe_payment_intent_id ? 'succeeded' : 'unpaid');
+
+          const cachedPreview = getBookingPreview(raw.id);
+
+          const rawPreview = (() => {
+            if (isNonEmptyString(raw.previewImage)) return raw.previewImage;
+            if ('preview_image' in raw) {
+              const snake = (raw as { preview_image?: unknown }).preview_image;
+              return isNonEmptyString(snake) ? snake : undefined;
+            }
+            return undefined;
+          })();
+
+          const hotelImageFallback = (() => {
+            const value = hotel?.image;
+            return isNonEmptyString(value) ? value : undefined;
+          })();
+
+          const previewImage =
+            rawPreview ??
+            cachedPreview ??
+            room?.previewImage ??
+            hotel?.thumbnail ??
+            hotel?.images?.[0] ??
+            hotelImageFallback;
 
           return {
-            ...b,
-            type: b.type || (b.hotel_id ? 'hotel' : b.flight_id ? 'flight' : 'unknown'),
-            currency: b.currency || 'USD',
-            payment_status: b.payment_status || (b.stripe_payment_intent_id ? 'succeeded' : 'unpaid'),
+            ...raw,
+            type,
+            currency,
+            payment_status: paymentStatus,
             hotel,
             room,
+            previewImage,
           };
         });
 

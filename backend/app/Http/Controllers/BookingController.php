@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Booking;
+use App\Models\Hotel;
+use App\Models\Room;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -127,14 +129,40 @@ class BookingController extends Controller
             'payment_intent_id' => 'nullable|string',
         ]);
 
+        $hotelId = $request->input('hotel_id');
+
         // Ensure at least hotel or flight is provided
-        if (!$request->input('hotel_id') && !$request->input('flight_id')) {
+        if (!$hotelId && !$request->input('flight_id')) {
             return response()->json(['message' => 'Either hotel_id or flight_id must be provided'], 422);
         }
 
         // For hotel bookings, check_in and check_out are required
-        if ($request->input('hotel_id') && (!$request->input('check_in') || !$request->input('check_out'))) {
+        if ($hotelId && (!$request->input('check_in') || !$request->input('check_out'))) {
             return response()->json(['message' => 'check_in and check_out are required for hotel bookings'], 422);
+        }
+
+        if ($hotelId) {
+            $hotel = Hotel::find($hotelId);
+            if (!$hotel) {
+                return response()->json(['message' => 'Selected hotel not found'], 422);
+            }
+            $validated['hotel_id'] = $hotel->id;
+        }
+
+        if (!empty($validated['room_id']) && $hotelId) {
+            $requestedRoomId = $validated['room_id'];
+            $room = Room::where('hotel_id', $validated['hotel_id'])
+                ->where(function ($query) use ($requestedRoomId) {
+                    $query->where('id', $requestedRoomId)
+                        ->orWhere('external_id', $requestedRoomId);
+                })
+                ->first();
+
+            if (!$room) {
+                return response()->json(['message' => 'Selected room not found for this hotel'], 422);
+            }
+
+            $validated['room_id'] = $room->id;
         }
 
         $paymentIntentId = $validated['payment_intent_id'] ?? null;

@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, type SyntheticEvent } from "react";
+
+const DEFAULT_PLACEHOLDER =
+  "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=800&auto=format&fit=crop";
 
 type Props = {
   src: string;
@@ -14,7 +17,12 @@ type Props = {
  * so that backend-relative paths (e.g. "storage/rooms/1.jpg" or "/storage/rooms/1.jpg")
  * are requested from the API server instead of the frontend dev server.
  */
-export default function SafeImage({ src, alt, className, fallback = "/placeholder-hotel.jpg" }: Props) {
+export default function SafeImage({
+  src,
+  alt,
+  className,
+  fallback = DEFAULT_PLACEHOLDER,
+}: Props) {
   const [err, setErr] = useState(false);
 
   const API_BASE = (import.meta.env.VITE_API_BASE_URL as string) || "";
@@ -38,11 +46,15 @@ export default function SafeImage({ src, alt, className, fallback = "/placeholde
     return value;
   };
 
-  const resolvedSrc = prefixIfNeeded(src);
   const resolvedFallback = prefixIfNeeded(fallback);
+  const resolvedSrcRaw = prefixIfNeeded(src);
+  const resolvedSrc =
+    resolvedSrcRaw && resolvedSrcRaw.trim().length > 0
+      ? resolvedSrcRaw
+      : resolvedFallback;
 
   // tránh vòng lặp onError nếu fallback cũng lỗi
-  const onError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const onError = (e: SyntheticEvent<HTMLImageElement>) => {
     if (!err) {
       setErr(true);
       (e.target as HTMLImageElement).src = resolvedFallback;

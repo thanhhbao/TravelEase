@@ -15,6 +15,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { createBooking, createPaymentIntent } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { rememberBookingPreview } from "../../utils/bookingPreview";
 
 type LocationState = {
   hotelId: number;
@@ -270,11 +271,18 @@ export default function Checkout() {
     void fetchIntent();
   }, [fetchIntent, intentState.clientSecret, intentState.error, intentState.loading, step]);
 
-  const handlePaymentSuccess = useCallback((booking: unknown, message?: string | null) => {
-    setBookingResult(booking ?? null);
-    setBookingMessage(message ?? null);
-    setStep(3);
-  }, []);
+  const handlePaymentSuccess = useCallback(
+    (booking: unknown, message?: string | null) => {
+      if (isBookingResult(booking) && data.hotelId && data.thumbnail) {
+        rememberBookingPreview(booking.id, data.thumbnail);
+      }
+
+      setBookingResult(booking ?? null);
+      setBookingMessage(message ?? null);
+      setStep(3);
+    },
+    [data.hotelId, data.thumbnail]
+  );
 
   const handleProcessingChange = useCallback((processing: boolean) => {
     setIsProcessingPayment(processing);

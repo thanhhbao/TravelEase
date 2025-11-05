@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -225,6 +225,29 @@ const HOT_DEALS: HotDeal[] = [
   },
 ];
 
+const HOT_DEAL_FEATURES = [
+  {
+    id: "change-fees",
+    title: "Zero change fees",
+    caption: "Swap itineraries up to 24 hours before departure. Terms apply.",
+  },
+  {
+    id: "upgrade",
+    title: "Complimentary upgrades",
+    caption: "Unlock suite-level perks at partner hotels and resorts. Subject to availability.",
+  },
+  {
+    id: "availability",
+    title: "Live availability",
+    caption: "Tap into real-time seat maps and last-minute room releases as they drop.",
+  },
+  {
+    id: "concierge",
+    title: "Concierge chat",
+    caption: "Message our travel stylists 24/7 from any device for instant help.",
+  },
+];
+
 const PAYMENT_BANNERS: PaymentBanner[] = [
   {
     id: "visa",
@@ -248,9 +271,9 @@ const PAYMENT_BANNERS: PaymentBanner[] = [
     id: "paypal",
     badge: "Digital Nomads",
     title: "PayPal Voyage",
-    description: "Secure wallet for extended stays, co-working passes, and flexible monthly rentals.",
+    description: "Secure wallet passes, and flexible monthly rentals.",
     stat: "Buyer protection",
-    gradient: "from-cyan-400 via-sky-500 to-blue-600",
+    gradient: "from-cyan-200 via-sky-200 to-blue-200",
     icon: ShieldCheck,
   },
   {
@@ -349,6 +372,245 @@ const WaveDivider = () => (
     ></path>
   </svg>
 );
+
+const HotDealsCardSwap = ({ deals }: { deals: HotDeal[] }) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const autoAdvanceRef = useRef<number | null>(null);
+  const resumeTimeoutRef = useRef<number | null>(null);
+
+  const handleAdvance = useCallback(
+    (step: number) => {
+      if (!deals.length) {
+        return;
+      }
+
+      setActiveIndex((previous) => {
+        const nextIndex = (previous + step + deals.length) % deals.length;
+        setDirection(step >= 0 ? 1 : -1);
+        return nextIndex;
+      });
+    },
+    [deals.length]
+  );
+
+  const pauseWithResume = useCallback(() => {
+    setIsPaused(true);
+
+    if (resumeTimeoutRef.current !== null) {
+      window.clearTimeout(resumeTimeoutRef.current);
+    }
+
+    resumeTimeoutRef.current = window.setTimeout(() => {
+      setIsPaused(false);
+      resumeTimeoutRef.current = null;
+    }, 6000);
+  }, []);
+
+  const goToIndex = useCallback(
+    (index: number) => {
+      if (index === activeIndex || index < 0 || index >= deals.length) {
+        return;
+      }
+
+      const isForward =
+        index > activeIndex || (activeIndex === deals.length - 1 && index === 0);
+
+      pauseWithResume();
+      setDirection(isForward ? 1 : -1);
+      setActiveIndex(index);
+    },
+    [activeIndex, deals.length, pauseWithResume]
+  );
+
+  useEffect(() => {
+    if (deals.length <= 1 || isPaused) {
+      return;
+    }
+
+    autoAdvanceRef.current = window.setInterval(() => {
+      handleAdvance(1);
+    }, 5200);
+
+    return () => {
+      if (autoAdvanceRef.current !== null) {
+        window.clearInterval(autoAdvanceRef.current);
+        autoAdvanceRef.current = null;
+      }
+    };
+  }, [deals.length, handleAdvance, isPaused]);
+
+  useEffect(
+    () => () => {
+      if (autoAdvanceRef.current !== null) {
+        window.clearInterval(autoAdvanceRef.current);
+      }
+
+      if (resumeTimeoutRef.current !== null) {
+        window.clearTimeout(resumeTimeoutRef.current);
+      }
+    },
+    []
+  );
+
+  const activeDeal = deals[activeIndex];
+  if (!activeDeal) {
+    return null;
+  }
+
+  const cardVariants = {
+    enter: (dir: 1 | -1) => ({
+      x: dir > 0 ? 120 : -120,
+      opacity: 0,
+      scale: 0.96,
+      rotate: dir > 0 ? 2 : -2,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      scale: 1,
+      rotate: 0,
+      transition: { duration: 0.62, ease: [0.18, 0.82, 0.25, 1] as const },
+    },
+    exit: (dir: 1 | -1) => ({
+      x: dir > 0 ? -120 : 120,
+      opacity: 0,
+      scale: 0.96,
+      rotate: dir > 0 ? -2 : 2,
+      transition: { duration: 0.5, ease: [0.24, 0.85, 0.32, 1] as const },
+    }),
+  } as const;
+
+  return (
+    <div className="relative flex w-full flex-col items-center gap-8">
+      <div className="pointer-events-none absolute inset-0 -z-10 rounded-[52px] border border-sky-100/80" />
+
+      <div
+        className="relative w-full max-w-[420px]"
+        onMouseEnter={() => {
+          setIsPaused(true);
+          if (resumeTimeoutRef.current !== null) {
+            window.clearTimeout(resumeTimeoutRef.current);
+            resumeTimeoutRef.current = null;
+          }
+        }}
+        onMouseLeave={() => {
+          setIsPaused(false);
+          if (resumeTimeoutRef.current !== null) {
+            window.clearTimeout(resumeTimeoutRef.current);
+            resumeTimeoutRef.current = null;
+          }
+        }}
+        onFocusCapture={() => {
+          setIsPaused(true);
+          if (resumeTimeoutRef.current !== null) {
+            window.clearTimeout(resumeTimeoutRef.current);
+            resumeTimeoutRef.current = null;
+          }
+        }}
+        onBlurCapture={() => {
+          setIsPaused(false);
+          if (resumeTimeoutRef.current !== null) {
+            window.clearTimeout(resumeTimeoutRef.current);
+            resumeTimeoutRef.current = null;
+          }
+        }}
+      >
+        <div className="pointer-events-none absolute -left-16 top-1/2 h-28 w-28 -translate-y-1/2 rounded-full bg-sky-300/30 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 right-0 h-36 w-36 rounded-full bg-cyan-300/25 blur-3xl" />
+
+        <div className="relative overflow-hidden rounded-[32px] border border-sky-100 bg-white/80 p-6 shadow-[0_30px_90px_-45px_rgba(14,116,144,0.25)] backdrop-blur md:p-8">
+          <AnimatePresence initial={false} custom={direction} mode="wait">
+            <motion.div
+              key={activeDeal.id}
+              custom={direction}
+              variants={cardVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              className="relative flex flex-col gap-7 overflow-hidden rounded-[24px] border border-sky-100 bg-white p-8 text-slate-900 shadow-[0_24px_70px_-40px_rgba(14,116,144,0.22)] sm:gap-8 sm:p-9"
+            >
+              <div className={`absolute inset-0 rounded-[24px] bg-gradient-to-br ${activeDeal.gradient} opacity-15`} />
+              <div className="absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.65),transparent_55%)]" />
+              <div className="absolute inset-0 rounded-[24px] border border-white/40" />
+              <div className="pointer-events-none absolute -left-12 top-14 h-24 w-24 rounded-full bg-sky-200/50 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-18 right-12 h-28 w-28 rounded-full bg-cyan-200/45 blur-3xl" />
+
+              <div className="relative flex flex-col gap-7">
+                <div className="inline-flex w-fit items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.38em] text-sky-700">
+                  <span>Save {activeDeal.discount}%</span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-sky-100 bg-sky-50 text-sky-600">
+                    <activeDeal.icon className="h-6 w-6 opacity-80" />
+                  </div>
+                  <div>
+                    <h3 className="text-[1.9rem] font-semibold leading-tight text-slate-900 sm:text-[32px]">
+                      {activeDeal.title}
+                    </h3>
+                    <p className="mt-3 max-w-xs text-sm text-slate-600 sm:text-base">
+                      {activeDeal.copy}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative space-y-3">
+                {activeDeal.perks.map((perk) => (
+                  <div
+                    key={perk}
+                    className="flex items-center justify-between rounded-[18px] border border-sky-100 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 shadow-[0_12px_24px_-18px_rgba(14,116,144,0.22)] sm:px-5"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-sky-400/70" />
+                      {perk}
+                    </span>
+                    <span className="text-[0.65rem] uppercase tracking-[0.38em] text-slate-400">
+                      •
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.05, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => {
+                  pauseWithResume();
+                  handleAdvance(1);
+                }}
+                className="relative mt-3 inline-flex items-center justify-center gap-2.5 self-start rounded-full border border-sky-200 bg-white px-7 py-2.5 text-[0.7rem] font-semibold uppercase tracking-[0.32em] text-slate-900 shadow-[0_18px_28px_-22px_rgba(14,116,144,0.2)]"
+              >
+                Unlock offer
+                <ArrowRight className="h-4 w-4 text-sky-500" />
+              </motion.button>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-medium text-slate-600">
+        {deals.map((deal, index) => (
+          <button
+            key={deal.id}
+            type="button"
+            onClick={() => goToIndex(index)}
+            className={`group relative inline-flex items-center gap-2 rounded-full border border-sky-200 px-4 py-2 transition ${
+              activeIndex === index
+                ? "bg-white text-slate-900 shadow-lg"
+                : "bg-white/70 text-slate-600 hover:bg-white"
+            }`}
+          >
+            <span className={`h-2 w-2 rounded-full ${activeIndex === index ? "bg-sky-500" : "bg-sky-400/60"}`} />
+            {deal.title}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const normalizeForSearch = (value: string) =>
   value
@@ -1235,197 +1497,374 @@ export default function Home() {
       </section>
 
       {/* ================= TRENDING DESTINATIONS ================= */}
-      <section className="relative py-26 bg-sky-50">
+      <section className="relative overflow-hidden bg-gradient-to-br from-white via-sky-50 to-cyan-50 py-28 text-slate-900">
         <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-sky-100 via-white to-cyan-100 opacity-90" />
-          <div className="absolute -top-24 left-12 h-40 w-40 rounded-full bg-sky-200/50 blur-3xl" />
-          <div className="absolute -bottom-24 right-16 h-48 w-48 rounded-full bg-cyan-200/50 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_75%)]" />
+          <div className="absolute -left-32 top-20 h-64 w-64 rounded-full bg-cyan-300/20 blur-[120px]" />
+          <div className="absolute right-[-20%] bottom-0 h-96 w-96 rounded-full bg-sky-200/25 blur-[140px]" />
         </div>
-        <div className="max-w-7xl mx-auto px-6 md:px-8">
+
+        <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-14 px-6 md:grid-cols-[minmax(0,360px)_minmax(0,1fr)] md:px-8">
           <ScrollReveal>
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-3 rounded-full bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.38em] text-sky-700 shadow-sm">
+                <Sparkles className="h-4 w-4 text-sky-500" />
+                Trending this week
+              </div>
               <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700 shadow-sm">
-                  <Sparkles className="h-4 w-4" />
-                  Trending this week
-                </div>
-                <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight">
+                <h2 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
                   Trending Destinations
                 </h2>
-                <p className="text-slate-600 max-w-2xl">
-                  Curated hot spots based on traveler bookings and search demand. Discover where
-                  fellow explorers are heading right now.
+                <p className="text-base text-slate-600 md:text-lg">
+                  Live booking sentiment plus curated editor picks—all blended into one weekly list.
+                  Swipe through the stack to catch the vibe before everyone else does.
                 </p>
               </div>
+
+              <div className="grid grid-cols-1 gap-4 text-sm text-slate-600">
+                <motion.div whileHover={{ x: 6 }} className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-ful text-sm font-semibold text-sky-700">
+                    01
+                  </div>
+                  Coastline escapes with sunrise yoga decks and reef tours ready to reserve.
+                </motion.div>
+                <motion.div whileHover={{ x: 6 }} className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-ful text-sm font-semibold text-sky-700">
+                    02
+                  </div>
+                  Boutique stays hand-picked for wow-factor lobbies and rooftop pools.
+                </motion.div>
+                <motion.div whileHover={{ x: 6 }} className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-ful text-sm font-semibold text-sky-700">
+                    03
+                  </div>
+                  Flight-friendly hubs under 10 hours from major APAC cities.
+                </motion.div>
+              </div>
+
               <motion.a
                 href="/destinations"
                 whileHover={{ scale: 1.04, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                className="inline-flex items-center gap-2 self-start md:self-end rounded-full border border-sky-200 bg-white px-5 py-2.5 text-sm font-semibold text-sky-700 shadow-sm hover:border-sky-300"
+                whileTap={{ scale: 0.97 }}
+                className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-5 py-2.5 text-sm font-semibold text-sky-700 shadow-sm transition hover:border-sky-300 hover:text-sky-600"
               >
-                Explore all
-                <ArrowRight className="h-4 w-4" />
+                Explore all Destinations
+                <ArrowRight className="h-4 w-4 text-sky-500" />
               </motion.a>
             </div>
           </ScrollReveal>
 
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TRENDING_DESTINATIONS.map((destination, index) => (
-              <ScrollReveal key={destination.id} delay={0.08 * (index + 1)}>
-                <motion.div
-                  whileHover={{ y: -8, scale: 1.02 }}
-                  className="group relative overflow-hidden rounded-3xl bg-white shadow-xl border border-white/60"
-                >
-                  <div className="absolute inset-0">
-                    <img
-                      src={destination.image}
-                      alt={destination.title}
-                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
-                  </div>
-                  <div className="relative flex flex-col justify-end p-6 md:p-7 space-y-3">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-white/80 backdrop-blur">
-                      Hot pick #{index + 1}
-                    </span>
-                    <h3 className="text-2xl font-bold text-white">{destination.title}</h3>
-                    <p className="text-white/80 text-sm leading-relaxed">
-                      {destination.description}
-                    </p>
-                  </div>
-                </motion.div>
-              </ScrollReveal>
-            ))}
-          </div>
+          <ScrollReveal delay={0.12}>
+            <div className="relative mx-auto w-full max-w-[520px]">
+              <div className="absolute -top-14 right-16 h-28 w-28 rounded-full bg-sky-200/30 blur-3xl" />
+              <div className="absolute -bottom-16 left-10 h-32 w-32 rounded-full bg-cyan-200/35 blur-3xl" />
+
+              <motion.div
+                layout
+                className="relative space-y-6"
+                initial="rest"
+                whileInView="inView"
+                viewport={{ once: true, amount: 0.6 }}
+              >
+                {TRENDING_DESTINATIONS.map((destination, index) => (
+                  <motion.div
+                    key={destination.id}
+                    layout
+                    variants={{
+                      rest: { opacity: 0, y: 40 },
+                      inView: { opacity: 1, y: 0, transition: { delay: index * 0.08, duration: 0.65, ease: [0.22, 1, 0.36, 1] } },
+                    }}
+                    whileHover={{ y: -6, scale: 1.01 }}
+                    className="group relative overflow-hidden rounded-3xl border border-sky-100/70 bg-white/80 backdrop-blur px-6 py-6 shadow-[0_26px_70px_-28px_rgba(14,116,144,0.35)]"
+                  >
+                    <div className="absolute inset-0">
+                      <img
+                        src={destination.image}
+                        alt={destination.title}
+                        className="h-full w-full rounded-3xl object-cover opacity-60 transition-transform duration-700 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-slate-950/75 via-slate-950/30 to-transparent" />
+                    </div>
+
+                    <div className="relative z-10 flex flex-col gap-4">
+                      <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.35em] text-white/70">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-gradient-to-r from-sky-400 to-cyan-300" />
+                          Spotlight #{index + 1}
+                        </span>
+                        <span>{destination.title.split(",")[0]}</span>
+                      </div>
+
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-2xl font-semibold leading-tight text-white">
+                            {destination.title}
+                          </h3>
+                          <p className="mt-2 text-sm text-white/75 leading-relaxed">
+                            {destination.description}
+                          </p>
+                        </div>
+                        <motion.button
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-lg"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
+          </ScrollReveal>
         </div>
       </section>
 
       {/* ================= HOT DEALS ================= */}
-      <section id="hot-deals" className="relative py-24 bg-sky-50 overflow-hidden">
+      <section id="hot-deals" className="relative overflow-hidden bg-gradient-to-br from-white via-sky-50 to-slate-100 py-28 text-slate-900">
         <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-x-0 -top-32 h-64 bg-gradient-to-b from-sky-100 to-transparent blur-3xl opacity-70" />
-          <div className="absolute -bottom-24 right-10 h-56 w-56 rounded-full bg-cyan-300/30 blur-3xl" />
-          <div className="absolute -bottom-32 left-16 h-40 w-40 rounded-full bg-sky-200/40 blur-3xl" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.15),transparent_72%)]" />
+          <div className="absolute -top-40 left-[-15%] h-[520px] w-[520px] rounded-full bg-sky-300/25 blur-[130px]" />
+          <div className="absolute bottom-0 right-[-20%] h-[520px] w-[520px] rounded-full bg-cyan-300/20 blur-[150px]" />
         </div>
-        <div className="max-w-7xl mx-auto px-6 md:px-8">
-        <ScrollReveal>
-            <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-3xl p-8 overflow-hidden">
-              {/* Ocean gradient background with wave animation */}
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-blue-500 to-blue-600 opacity-95"></div>
-              
-              {/* Animated water waves */}
-              <div className="absolute inset-0 opacity-30">
-                <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-blue-400/50 to-transparent animate-[wave_8s_ease-in-out_infinite]" 
-                     style={{ clipPath: 'ellipse(100% 100% at 50% 100%)' }}></div>
-                <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-cyan-300/40 to-transparent animate-[wave_6s_ease-in-out_infinite_0.5s]" 
-                     style={{ clipPath: 'ellipse(100% 100% at 50% 100%)' }}></div>
-                <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-blue-300/30 to-transparent animate-[wave_7s_ease-in-out_infinite_1s]" 
-                     style={{ clipPath: 'ellipse(100% 100% at 50% 100%)' }}></div>
+
+        <div className="relative mx-auto grid max-w-7xl grid-cols-1 items-center gap-16 px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,460px)] md:px-8">
+          <ScrollReveal>
+            <div className="space-y-10">
+              <div className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-sky-700 shadow-sm">
+                <Flame className="h-4 w-4 text-sky-500" />
+                Hot deals live
               </div>
 
-              {/* Bubbles animation */}
-              <div className="absolute inset-0 overflow-hidden">
-                {[...Array(6)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute bottom-0 rounded-full bg-white/20"
-                    style={{
-                      left: `${15 + i * 15}%`,
-                      width: `${10 + i * 3}px`,
-                      height: `${10 + i * 3}px`,
-                      animation: `bubble ${4 + i}s ease-in-out infinite`,
-                      animationDelay: `${i * 0.7}s`
-                    }}
-                  ></div>
+              <div className="space-y-5">
+                <h2 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
+                  Live travel deals, refreshed every few seconds
+                </h2>
+                <p className="max-w-xl text-base text-slate-600 md:text-lg">
+                 Every few seconds the front card rotates—revealing a fresh set of perks curated by the TravelEase concierge team. Hover or tap to pin your favorite offer.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {HOT_DEAL_FEATURES.map((feature, index) => (
+                  <motion.div
+                    key={feature.id}
+                    whileHover={{ x: 6, y: -6 }}
+                    transition={{ type: "spring", stiffness: 320, damping: 24, mass: 0.9 }}
+                    className="group relative overflow-hidden rounded-[28px] border border-sky-100 bg-white px-6 py-5 text-left text-slate-700 shadow-[0_24px_60px_-38px_rgba(14,116,144,0.28)]"
+                  >
+                    <div className="pointer-events-none absolute inset-0 rounded-[28px] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.2),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                    <div className="pointer-events-none absolute -right-12 top-10 h-24 w-24 rounded-full bg-sky-200/30 blur-3xl transition-opacity duration-500 group-hover:opacity-80" />
+                    <div className="relative flex items-start gap-4">
+                      <div className="relative">
+                        <span className="absolute inset-0 rounded-full bg-sky-200/40 blur-md" />
+                        <span className="relative flex h-11 w-11 items-center justify-center rounded-full border border-sky-100 bg-sky-50 text-sm font-semibold text-sky-700 shadow-[0_14px_32px_-16px_rgba(14,116,144,0.35)]">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-base font-semibold tracking-tight text-slate-900">{feature.title}</p>
+                        {feature.caption ? (
+                          <p className="text-[0.82rem] leading-relaxed text-slate-600">{feature.caption}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </motion.div>
                 ))}
               </div>
 
-              <div className="relative z-10">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/90 backdrop-blur-sm px-4 py-1.5 text-xs font-semibold text-blue-700 shadow-lg border border-white/50">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                  </span>
-                  Hot deals live
+              <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
+    
+                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1">
+                  <ShieldCheck className="h-4 w-4 text-sky-500" />
+                  Flexible terms
                 </div>
-                <h2 className="mt-4 text-4xl md:text-5xl font-extrabold text-white drop-shadow-lg">
-                  Sizzling Discounts
-                </h2>
-                <p className="mt-3 text-white/95 max-w-2xl font-medium drop-shadow">
-                  Choose a deal tailored to your travel style. Limited-time offers with free
-                  breakfast, late checkout, and zero change fees.
-                </p>
-              </div>
-              <div className="relative z-10 rounded-2xl bg-white/95 backdrop-blur-md text-blue-900 px-6 py-4 text-sm font-semibold shadow-2xl border border-white/50 flex items-center gap-2 hover:bg-white transition-all">
-                <Flame className="h-4 w-4 text-red-500 animate-pulse" />
-                Updated live • Tap a card to view inclusions
+                <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1">
+                  <CreditCard className="h-4 w-4 text-sky-500" />
+                  Secure checkout
+                </div>
               </div>
             </div>
-
-            <style>{`
-              @keyframes wave {
-                0%, 100% { transform: translateY(0px) scaleY(1); }
-                50% { transform: translateY(-15px) scaleY(0.95); }
-              }
-              @keyframes bubble {
-                0% { transform: translateY(0) scale(1); opacity: 0; }
-                10% { opacity: 0.6; }
-                90% { opacity: 0.6; }
-                100% { transform: translateY(-500px) scale(1.5); opacity: 0; }
-              }
-            `}</style>
           </ScrollReveal>
 
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-7">
-            {HOT_DEALS.map((deal, index) => (
-              <ScrollReveal key={deal.id} delay={0.1 * (index + 1)}>
-                <motion.div
-                  whileHover={{ y: -12, scale: 1.02 }}
-                  className="group relative h-full"
-                >
-                  <div
-                    className={`absolute inset-0 rounded-[32px] bg-gradient-to-br ${deal.gradient} opacity-70 blur-3xl transition-opacity duration-500 group-hover:opacity-90`}
-                  />
-                  <div className="relative flex h-full flex-col justify-between rounded-[32px] border border-white/30 bg-white/10 px-6 py-7 md:px-7 md:py-8 shadow-2xl backdrop-blur-xl text-white overflow-hidden">
-                    <div className="absolute -top-20 -right-16 h-36 w-36 rounded-full bg-white/20 blur-3xl" />
-                    <div className="absolute -bottom-24 left-8 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
-                    <div className="relative space-y-4">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em]">
-                        <span>Save {deal.discount}%</span>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div className="rounded-2xl bg-white/15 p-3 text-white/90">
-                          <deal.icon className="h-6 w-6" />
-                        </div>
-                        <div>
-                          <h3 className="text-2xl font-bold">{deal.title}</h3>
-                          <p className="mt-2 text-sm text-white/80 leading-relaxed">
-                            {deal.copy}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+          <ScrollReveal delay={0.12}>
+            <HotDealsCardSwap deals={HOT_DEALS} />
+          </ScrollReveal>
+        </div>
+      </section>
 
-                    <ul className="relative mt-6 space-y-2 text-sm text-white/80">
-                      {deal.perks.map((perk, perkIndex) => (
-                        <li
-                          key={perkIndex}
-                          className="flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-2 backdrop-blur"
-                        >
-                          <span className="inline-flex h-2 w-2 rounded-full bg-white/70" />
-                          <span>{perk}</span>
-                        </li>
-                      ))}
-                    </ul>
+      {/* ================= NEWSLETTER ================= */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-sky-50 via-white to-cyan-50 py-28">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute -top-40 left-[10%] h-64 w-64 rounded-full bg-sky-200/60 blur-[110px]" />
+          <div className="absolute -bottom-32 right-[12%] h-72 w-72 rounded-full bg-cyan-200/60 blur-[120px]" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-6xl grid-cols-1 gap-12 px-6 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] md:px-8">
+          <ScrollReveal>
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-3 rounded-full bg-sky-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-sky-700">
+                <Gift className="h-4 w-4" />
+                Members-only drops
+              </div>
+
+              <div className="space-y-4">
+                <h2 className="text-4xl font-semibold leading-tight text-slate-900 md:text-5xl">
+                  Unlock concierge tips every Thursday
+                </h2>
+                <p className="max-w-xl text-base text-slate-600 md:text-lg">
+                  Early access to flash hotel sales, seat upgrades you can actually grab, and
+                  48-hour alerts for bespoke ocean experiences curated by the TravelEase editors.
+                </p>
+              </div>
+
+              <div className="grid gap-4 text-sm text-slate-600 md:grid-cols-2">
+                {["Weekly inspo, zero spam", "First dibs on new destinations", "Exclusive partner perks", "Cancel anytime online"].map((item) => (
+                  <motion.div
+                    key={item}
+                    whileHover={{ x: 6 }}
+                    className="flex items-center gap-3 rounded-2xl border border-sky-100 bg-white/80 px-4 py-3 shadow-sm"
+                  >
+                    <Sparkles className="h-4 w-4 text-sky-500" />
+                    {item}
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="flex gap-6 text-sm font-medium text-slate-500">
+                <div className="flex flex-col">
+                  <span className="text-3xl font-semibold text-slate-900">52k+</span>
+                  Subscribers
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-3xl font-semibold text-slate-900">93%</span>
+                  Read-through rate
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={0.12}>
+            <div className="relative">
+              <div className="absolute -top-10 right-6 h-32 w-32 rounded-full bg-sky-200/50 blur-[90px]" />
+              <div className="absolute -bottom-16 left-6 h-40 w-40 rounded-full bg-cyan-200/50 blur-[110px]" />
+
+              <div className="relative overflow-hidden rounded-[32px] border border-sky-100/70 bg-white/90 p-8 shadow-[0_40px_120px_-40px_rgba(14,116,144,0.25)] backdrop-blur">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-2xl font-semibold text-slate-900">Join the TravelEase crew</h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      Drop your email and receive a welcome code for <span className="font-semibold text-sky-600">10% off</span> your first booking.
+                    </p>
+                  </div>
+
+                  <form
+                    className="space-y-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                    }}
+                  >
+                    <label className="block space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+                        Email address
+                      </span>
+                      <input
+                        type="email"
+                        required
+                        placeholder="you@example.com"
+                        className="w-full rounded-2xl border border-sky-200 bg-white px-5 py-4 text-base text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                      />
+                    </label>
 
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
+                      type="submit"
+                      whileHover={{ scale: 1.03, y: -1 }}
                       whileTap={{ scale: 0.97 }}
-                      className="relative mt-6 inline-flex items-center justify-between gap-3 rounded-2xl bg-white text-slate-900 px-5 py-3 text-sm font-semibold uppercase tracking-[0.28em] shadow-xl"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 px-6 py-4 text-sm font-semibold uppercase tracking-[0.32em] text-white shadow-lg"
                     >
-                      Unlock offer
+                      Send me updates
                       <ArrowRight className="h-4 w-4" />
                     </motion.button>
+                  </form>
+
+                  <p className="text-xs text-slate-400">
+                    One-click unsubscribe. We never share your email.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ================ TRUST & PAYMENTS ================ */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-sky-100/40 py-28 text-slate-900">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.12),transparent_78%)]" />
+          <div className="absolute -top-24 left-[18%] h-56 w-56 rounded-full bg-sky-300/30 blur-[120px]" />
+          <div className="absolute bottom-[-20%] right-[15%] h-72 w-72 rounded-full bg-cyan-200/35 blur-[140px]" />
+        </div>
+
+        <div className="relative mx-auto max-w-6xl px-6 md:px-8">
+          <ScrollReveal>
+            <div className="flex flex-col items-start gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-4 max-w-xl">
+                <div className="inline-flex items-center gap-3 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-sky-700 shadow-sm">
+                  <CreditCard className="h-4 w-4 text-sky-500" />
+                  TravelEase payments
+                </div>
+                <h3 className="text-3xl font-semibold leading-tight text-slate-900 md:text-4xl">
+                  Trusted payment partners from check-in to takeoff
+                </h3>
+                <p className="text-sm text-slate-600 md:text-base">
+                  Tap, swipe, or scan anywhere you dock. Each partner card unlocks unique experiences,
+                  pre-arrival upgrades, and concierge-protected transactions.
+                </p>
+              </div>
+
+              <motion.div
+                className="flex items-center gap-4 rounded-full border border-sky-100 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-600 shadow-sm"
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <ShieldCheck className="h-4 w-4 text-sky-500" />
+                PCI DSS compliant
+              </motion.div>
+            </div>
+          </ScrollReveal>
+
+          <div className="mt-14 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {PAYMENT_BANNERS.map((banner, index) => (
+              <ScrollReveal key={banner.id} delay={0.06 * index}>
+                <motion.div
+                  whileHover={{ y: -6, scale: 1.01 }}
+                  className="relative overflow-hidden rounded-[28px] border border-sky-100 bg-white px-6 py-6 shadow-[0_24px_72px_-34px_rgba(14,116,144,0.25)] min-h-[208px] md:min-h-[220px]"
+                >
+                  <div className={`absolute inset-0 rounded-[28px] bg-gradient-to-br ${banner.gradient} opacity-15`} />
+                  <div className="absolute inset-0 rounded-[28px] opacity-40 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_68%)]" />
+
+                  <div className="relative flex flex-col gap-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.32em] text-sky-700 shadow-sm">
+                        {banner.badge}
+                      </span>
+                      <banner.icon className="h-5 w-5 text-sky-600" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-xl font-semibold leading-snug tracking-tight text-slate-900">
+                        {banner.title}
+                      </h4>
+                      <p className="text-sm text-slate-600 leading-relaxed">
+                        {banner.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.35em] text-slate-500">
+                      <span>{banner.stat}</span>
+                      <ArrowRight className="h-4 w-4 text-sky-500" />
+                    </div>
                   </div>
                 </motion.div>
               </ScrollReveal>
@@ -1433,156 +1872,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* ================= NEWSLETTER ================= */}
-      <section className="relative py-24 bg-sky-50 overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-sky-100 via-white to-cyan-100 opacity-90" />
-          <div className="absolute -top-24 right-14 h-56 w-56 rounded-full bg-sky-200/70 blur-3xl" />
-          <div className="absolute -bottom-28 left-16 h-60 w-60 rounded-full bg-cyan-200/70 blur-3xl" />
-        </div>
-        <div className="relative max-w-5xl mx-auto px-6 md:px-8">
-          <ScrollReveal>
-            <div className="rounded-[36px] border border-sky-100 bg-white/80 backdrop-blur-2xl shadow-2xl p-8 md:p-12 space-y-6">
-              <div className="inline-flex items-center gap-2 rounded-full bg-sky-100 px-4 py-1.5 text-sm font-semibold text-sky-700">
-                <Gift className="h-4 w-4" />
-                Join the TravelEase crew
-              </div>
-              <h2 className="text-4xl md:text-5xl font-extrabold leading-tight text-slate-900">
-                Newsletter + Welcome Gift
-              </h2>
-              <p className="text-slate-600 max-w-3xl text-lg">
-                Subscribe for weekly flash-sale alerts, destination guides, and concierge-only perks.
-                New members receive a <span className="font-semibold text-sky-700">10% OFF</span> welcome
-                voucher instantly.
-              </p>
-
-              <form
-                className="flex flex-col md:flex-row gap-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                }}
-              >
-                <input
-                  type="email"
-                  required
-                  placeholder="Your email address"
-                  className="flex-1 rounded-2xl border border-sky-200 bg-white/90 px-5 py-4 text-base text-slate-900 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-200"
-                />
-                <motion.button
-                  type="submit"
-                  whileHover={{ scale: 1.04, y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-cyan-500 px-6 py-4 font-semibold text-white shadow-xl"
-                >
-                  Get my 10% OFF
-                  <ArrowRight className="h-4 w-4" />
-                </motion.button>
-              </form>
-
-              <p className="text-slate-500 text-sm">
-                We respect your inbox. Expect curated inspiration once a week, and unsubscribe any
-                time.
-              </p>
-            </div>
-          </ScrollReveal>
-        </div>
-      </section>
-
-      {/* ================ TRUST BADGES (COMPACT TRAVEL STYLE) ================ */}
-<section
-  aria-labelledby="trust-badges-title"
-  className="relative py-12 md:py-16 overflow-hidden text-white"
->
-  {/* BG gradient trời–biển gọn hơn */}
-  <div className="absolute inset-0 bg-gradient-to-br from-sky-950 via-sky-900 to-cyan-800" />
-  {/* glow nhẹ, tránh rối */}
-  <div className="absolute -top-24 left-[12%] h-40 w-40 rounded-full bg-sky-400/15 blur-3xl" />
-  <div className="absolute top-1/2 right-[18%] h-44 w-44 rounded-full bg-cyan-300/15 blur-3xl" />
-
-  {/* máy bay lướt qua (nhỏ hơn) */}
-  <motion.div
-    className="pointer-events-none hidden md:flex absolute top-14 left-1/2 -translate-x-1/2 text-white/30"
-    animate={{ x: ["-35%", "35%"], rotate: [6, -3, 6] }}
-    transition={{ duration: 16, ease: "easeInOut", repeat: Infinity, repeatType: "mirror" }}
-  >
-    <Plane className="h-10 w-10" aria-hidden="true" />
-  </motion.div>
-
-  <div className="relative max-w-6xl mx-auto px-6 md:px-8 space-y-8 md:space-y-10">
-    <div className="text-center space-y-4">
-      <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] md:text-xs font-semibold uppercase tracking-[0.35em] text-white/80">
-        <CreditCard className="h-4 w-4" aria-hidden="true" />
-        TravelEase payments
-      </div>
-      <h3 id="trust-badges-title" className="text-2xl md:text-3xl font-extrabold leading-tight">
-        Trusted travel payments from check-in to takeoff
-      </h3>
-      <p className="text-white/80 max-w-2xl mx-auto text-sm md:text-base">
-        Tap, swipe, or scan at beach resorts, alpine lodges, and island airports—no currency or security worries.
-      </p>
-    </div>
-
-    {/* ====== full-bleed compact marquee ====== */}
-    <div
-      className="relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-hidden py-4 md:py-6"
-      role="region"
-      aria-label="Travel payment highlights"
-    >
-      {/* fade 2 bên cho chuyên nghiệp hơn */}
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-sky-950 via-sky-950/70 to-transparent" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-sky-950 via-sky-950/70 to-transparent" />
-
-      <motion.div
-        className="flex w-max gap-5 md:gap-6 will-change-transform"
-        animate={{ x: ["0%", "-50%"] }}
-        transition={{ repeat: Infinity, duration: 30, ease: "linear" }}
-      >
-        {[...PAYMENT_BANNERS, ...PAYMENT_BANNERS].map((slide, idx) => (
-          <article
-            key={`${slide.id}-${idx}`}
-            className="relative min-w-[240px] sm:min-w-[280px] lg:min-w-[320px] xl:min-w-[360px] aspect-[16/7]
-                       rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur
-                       shadow-[0_10px_30px_-12px_rgba(14,165,233,0.45)]"
-            aria-label={slide.title}
-          >
-            {/* gradient theo slide, mờ hơn để dễ đọc */}
-            <div className={`absolute inset-0 bg-gradient-to-br ${slide.gradient} opacity-70`} />
-            {/* highlight texture rất nhẹ */}
-            <div className="absolute inset-0 opacity-20 bg-[radial-gradient(80%_60%_at_50%_0%,rgba(255,255,255,0.5),transparent_60%)]" />
-            {/* đường tròn trang trí tinh tế */}
-            <div className="absolute -top-10 -right-10 h-24 w-24 rounded-full border border-white/20 opacity-30" />
-            <div className="absolute -bottom-10 left-6 h-20 w-20 rounded-full border border-white/20 opacity-30" />
-
-            <div className="relative h-full px-5 py-4 md:px-6 md:py-4 flex flex-col justify-between">
-              <div className="flex items-start justify-between gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-2.5 py-1
-                                   text-[10px] md:text-xs font-semibold uppercase tracking-[0.3em] text-white/85">
-                  {slide.badge}
-                </span>
-                <slide.icon className="h-5 w-5 text-white/85" aria-hidden="true" />
-              </div>
-
-              <div className="space-y-1.5 md:space-y-2">
-                <h4 className="text-lg md:text-xl font-bold leading-snug tracking-tight">
-                  {slide.title}
-                </h4>
-                <p className="text-xs md:text-sm text-white/85 leading-relaxed line-clamp-2 md:line-clamp-3">
-                  {slide.description}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between text-[10px] md:text-xs uppercase tracking-[0.28em] text-white/80">
-                <span>{slide.stat}</span>
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </div>
-            </div>
-          </article>
-        ))}
-      </motion.div>
-    </div>
-  </div>
-</section>
 
       {/* ================= FEATURED HOTELS ================= */}
       <section className="py-24 bg-white">
@@ -1661,66 +1950,80 @@ export default function Home() {
       </section>
 
       {/* ================= CTA ================= */}
-      <section className="relative py-24 bg-gradient-to-br from-sky-900 via-sky-800 to-cyan-800 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute top-1/3 left-1/4 w-72 h-72 bg-sky-400 rounded-full blur-3xl animate-pulse" />
-          <div
-            className="absolute bottom-1/3 right-1/4 w-72 h-72 bg-cyan-400 rounded-full blur-3xl animate-pulse"
-            style={{ animationDelay: "1s" }}
-          />
+      <section className="relative overflow-hidden bg-[#01020b] py-28 text-white">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.25),transparent_70%)]" />
+          <div className="absolute -top-32 left-1/3 h-64 w-64 rounded-full bg-cyan-400/30 blur-[110px]" />
+          <div className="absolute bottom-[-20%] right-1/4 h-72 w-72 rounded-full bg-sky-500/25 blur-[120px]" />
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-6 md:px-8 text-center">
+        <div className="relative mx-auto max-w-6xl px-6 md:px-8">
           <ScrollReveal>
-            <h2 className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight">
-              Ready to Start Your
-              <br />
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-sky-200 to-cyan-200">
-                Ocean Journey?
-              </span>
-            </h2>
-            <p className="text-lg text-sky-100/90 max-w-3xl mx-auto">
-              Join over 50,000 travelers who trust TravelEase for calm, seamless bookings
-              from flight to seaside stay.
-            </p>
+            <div className="grid grid-cols-1 gap-10 text-center md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] md:text-left">
+              <div className="space-y-8">
+                <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.35em] text-white/75">
+                  <Plane className="h-4 w-4" />
+                  TravelEase concierge
+                </p>
+                <h2 className="text-4xl font-semibold leading-tight md:text-5xl">
+                  Ready for your next ocean escape?
+                </h2>
+                <p className="max-w-2xl text-base text-white/70 md:text-lg">
+                  Seamless planning from airport lounge to overwater villa. Our team watches fare drops,
+                  unlocks local-only perks, and keeps itineraries flexible—so you can focus on the view.
+                </p>
 
-            <div className="flex flex-col sm:flex-row gap-5 justify-center mt-10">
-              <motion.button
-                whileHover={{ scale: 1.04, y: -2 }}
-                whileTap={{ scale: 0.96 }}
-                className="bg-white text-slate-900 px-8 py-4 rounded-full font-extrabold hover:bg-slate-100 shadow-2xl"
-              >
-                Book Premium Hotels
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.04, y: -2 }}
-                whileTap={{ scale: 0.96 }}
-                className="border-2 border-white text-white px-8 py-4 rounded-full font-extrabold hover:bg-white hover:text-slate-900 transition"
-              >
-                Find Best Flights
-              </motion.button>
-            </div>
+                <div className="flex flex-col items-center gap-4 md:flex-row md:items-start">
+                  <motion.button
+                    whileHover={{ scale: 1.04, y: -2 }}
+                    whileTap={{ scale: 0.96 }}
+                    className="inline-flex items-center justify-center gap-3 rounded-full bg-white px-8 py-4 text-sm font-semibold uppercase tracking-[0.32em] text-slate-900 shadow-[0_24px_60px_rgba(255,255,255,0.35)]"
+                  >
+                    Plan my stay
+                    <ArrowRight className="h-4 w-4" />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.04, y: -2 }}
+                    whileTap={{ scale: 0.96 }}
+                    className="inline-flex items-center justify-center gap-3 rounded-full border border-white/30 bg-transparent px-8 py-4 text-sm font-semibold uppercase tracking-[0.32em] text-white/80 backdrop-blur"
+                  >
+                    Talk to an expert
+                  </motion.button>
+                </div>
+              </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 max-w-5xl mx-auto pt-12 mt-12 border-t border-white/20">
-              <motion.div whileHover={{ scale: 1.06 }} className="space-y-1">
-                <div className="text-5xl md:text-6xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-sky-200 to-cyan-200">
-                  4.9/5
-                </div>
-                <div className="text-sky-100/90 text-lg">Customer Rating</div>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.06 }} className="space-y-1">
-                <div className="text-5xl md:text-6xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-sky-200 to-cyan-200">
-                  50K+
-                </div>
-                <div className="text-sky-100/90 text-lg">Happy Travelers</div>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.06 }} className="space-y-1">
-                <div className="text-5xl md:text-6xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-sky-200 to-cyan-200">
-                  24/7
-                </div>
-                <div className="text-sky-100/90 text-lg">Premium Support</div>
-              </motion.div>
+              <div className="flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-6 text-left shadow-[0_24px_80px_-30px_rgba(59,130,246,0.55)] backdrop-blur">
+                {[{
+                  label: "Customer rating",
+                  value: "4.9",
+                  suffix: "/5"
+                }, {
+                  label: "Travellers assisted",
+                  value: "50K",
+                  suffix: "+"
+                }, {
+                  label: "Support availability",
+                  value: "24/7",
+                  suffix: ""
+                }].map((stat) => (
+                  <motion.div
+                    key={stat.label}
+                    whileHover={{ scale: 1.02 }}
+                    className="rounded-2xl border border-white/10 bg-white/10 px-4 py-4"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">
+                      {stat.label}
+                    </p>
+                    <p className="mt-2 text-4xl font-semibold text-white">
+                      {stat.value}
+                      <span className="text-lg text-white/70">{stat.suffix}</span>
+                    </p>
+                  </motion.div>
+                ))}
+                <p className="text-xs text-white/60">
+                  TravelEase operates with fully licensed tour partners and global insurance coverage.
+                </p>
+              </div>
             </div>
           </ScrollReveal>
         </div>

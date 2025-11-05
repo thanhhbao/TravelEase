@@ -10,16 +10,17 @@ class Room extends Model
 {
     protected $fillable = [
         'hotel_id',
+        'external_id',
         'name',
-        'description',
-        'price_per_night',
-        'capacity',
+        'beds',
+        'max_guests',
+        'price',
         'images',
     ];
 
     protected $casts = [
-        'price_per_night' => 'decimal:2',
-        'capacity' => 'integer',
+        'price' => 'decimal:2',
+        'max_guests' => 'integer',
         'images' => 'array',
     ];
 

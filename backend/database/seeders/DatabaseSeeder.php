@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $this->call([
+            HotelSeeder::class,
             FlightSeeder::class,
             TicketSeeder::class,
         ]);
