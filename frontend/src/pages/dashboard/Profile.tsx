@@ -41,11 +41,23 @@ const hostStatusBadgeMap = {
 } as const;
 
 const hostStatusCopy = {
-  not_registered: "Chưa đăng ký làm người đăng tin",
-  pending: "Đã gửi yêu cầu, chờ admin duyệt",
-  approved: "Bạn đang là người đăng tin",
-  rejected: "Cần bổ sung thông tin để xét duyệt lại",
+  not_registered: "You have not joined the host program yet",
+  pending: "Your request is under review",
+  approved: "You are currently approved as a host",
+  rejected: "Your previous request was rejected. Please update and try again",
 } as const;
+
+const UNIT_OPTIONS = [
+  { value: "1-2 listings", label: "1 – 2 rooms/apartments" },
+  { value: "3-5 listings", label: "3 – 5 rooms/apartments" },
+  { value: "6+ listings", label: "6+ rooms/apartments" },
+];
+
+const EXPERIENCE_OPTIONS = [
+  { value: "new_host", label: "This is my first time hosting" },
+  { value: "1-3_years", label: "1 – 3 years of rental experience" },
+  { value: "3+_years", label: "More than 3 years of rental experience" },
+];
 
 export default function Profile() {
   const {
@@ -91,8 +103,9 @@ export default function Profile() {
   const [hostForm, setHostForm] = useState({
     phone: user?.phone ?? "",
     city: "",
+    units: "",
     experience: "",
-    message: "",
+    introduction: "",
   });
   const [hostFormStatus, setHostFormStatus] = useState<null | { type: "success" | "error"; message: string }>(null);
   const [isSubmittingHost, setIsSubmittingHost] = useState(false);
@@ -112,32 +125,39 @@ export default function Profile() {
     setIsSubmittingHost(true);
 
     try {
-      const result = registerHostApplication({
+      const result = await registerHostApplication({
         userId: user.id,
-        userName: user.name ?? "Người dùng",
+        userName: user.name ?? "Member",
         email: user.email ?? "",
         phone: hostForm.phone,
         city: hostForm.city,
+        inventory: hostForm.units,
         experience: hostForm.experience,
-        message: hostForm.message,
+        message: hostForm.introduction,
       });
 
       if (result.status === "created") {
         setHostFormStatus({
           type: "success",
-          message: "Đã gửi yêu cầu. Đội ngũ admin sẽ phản hồi trong vòng 24 giờ.",
+          message: "Request sent. Our admin team will review it shortly.",
         });
         setHostFormOpen(false);
+        setHostForm((prev) => ({
+          ...prev,
+          units: "",
+          experience: "",
+          introduction: "",
+        }));
       } else {
         setHostFormStatus({
           type: "error",
-          message: "Bạn đang có một yêu cầu chờ duyệt. Vui lòng đợi phản hồi.",
+          message: "You already have a pending request. Please wait for approval.",
         });
       }
     } catch {
       setHostFormStatus({
         type: "error",
-        message: "Không thể gửi yêu cầu lúc này. Vui lòng thử lại sau.",
+        message: "We could not submit your request right now. Please retry later.",
       });
     } finally {
       setIsSubmittingHost(false);
@@ -659,9 +679,9 @@ export default function Profile() {
             <div className="relative rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 shadow-xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-bold text-slate-900">Đăng tin cho thuê</h3>
+                  <h3 className="text-xl font-bold text-slate-900">Host listings</h3>
                   <p className="text-sm text-slate-600 mt-1">
-                    Trở thành đối tác host của TravelEase để quảng bá phòng và căn hộ của bạn.
+                    Become a TravelEase host to promote your rooms and apartments in minutes.
                   </p>
                 </div>
                 <span
@@ -674,43 +694,43 @@ export default function Profile() {
               {hostStatus === "approved" ? (
                 <div className="mt-4 space-y-4">
                   <p className="text-sm text-slate-600">
-                    Bạn đã có toàn quyền đăng tin. Quản lý lịch, giá và đơn đặt phòng trong không gian riêng dành cho host.
+                    You already have full host access. Manage schedules, pricing, and reservations in the dedicated workspace.
                   </p>
                   <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1">
                       <BadgeCheck className="h-3.5 w-3.5 text-emerald-600" />
-                      Ưu tiên duyệt tin
+                      Priority review
                     </span>
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1">
                       <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                      Công cụ định giá
+                      Pricing tools
                     </span>
                   </div>
                   <Link
                     to="/host/workspace"
                     className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                   >
-                    Quản lý Host Workspace
+                    Open Host Workspace
                   </Link>
                 </div>
               ) : hostStatus === "pending" ? (
                 <div className="mt-4 space-y-3">
                   <div className="rounded-2xl border border-blue-100 bg-white/70 p-4 text-sm text-slate-700">
                     <p>
-                      Đã nhận đơn đăng ký {myHostApplication ? new Date(myHostApplication.submittedAt).toLocaleDateString("vi-VN") : "gần đây"}.
+                    We received your application {myHostApplication ? new Date(myHostApplication.submittedAt).toLocaleDateString() : "recently"}.
                     </p>
                     <p className="mt-1 text-slate-500">
-                      Chúng tôi sẽ phản hồi qua email <strong>{user.email}</strong>.
+                      You will get a reply via <strong>{user.email}</strong>.
                     </p>
                   </div>
                   <p className="text-xs text-slate-500">
-                    Nếu cần cập nhật thông tin, hãy chỉnh sửa hồ sơ và liên hệ đội ngũ hỗ trợ.
+                    Need to update the details? Edit your profile and contact our support team.
                   </p>
                 </div>
               ) : (
                 <div className="mt-4 space-y-4">
                   <p className="text-sm text-slate-600">
-                    Nhận hỗ trợ định giá, công cụ quản lý và đội ngũ chăm sóc khách hàng 24/7 khi đăng ký làm người đăng tin.
+                    Unlock pricing support, calendar management, and a 24/7 partner success team.
                   </p>
 
                   {hostFormStatus && (
@@ -728,7 +748,7 @@ export default function Profile() {
                   {hostFormOpen ? (
                     <form className="space-y-4" onSubmit={handleHostApplicationSubmit}>
                       <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Số điện thoại</label>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Phone number</label>
                         <input
                           type="tel"
                           value={hostForm.phone}
@@ -738,36 +758,63 @@ export default function Profile() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Thành phố</label>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">City</label>
                         <input
                           type="text"
                           value={hostForm.city}
                           onChange={(e) => handleHostInputChange("city", e.target.value)}
                           className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
-                          placeholder="Ví dụ: Đà Nẵng"
+                          placeholder="e.g. Da Nang"
                           required
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Kinh nghiệm / Tài sản</label>
-                        <input
-                          type="text"
-                          value={hostForm.experience}
-                          onChange={(e) => handleHostInputChange("experience", e.target.value)}
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Number of rooms / apartments</label>
+                        <select
+                          value={hostForm.units}
+                          onChange={(e) => handleHostInputChange("units", e.target.value)}
                           className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
-                          placeholder="Số lượng phòng, kinh nghiệm quản lý..."
                           required
-                        />
+                        >
+                          <option value="">Select the inventory you plan to list</option>
+                          {UNIT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Giới thiệu nhanh</label>
+                        <p className="text-sm font-medium text-slate-600 mb-2">Rental experience</p>
+                        <div className="space-y-2">
+                          {EXPERIENCE_OPTIONS.map((option, index) => (
+                            <label
+                              key={option.value}
+                              className="flex items-center gap-3 rounded-xl border border-amber-100 bg-white/80 px-4 py-2 text-sm text-slate-700"
+                            >
+                              <input
+                                type="radio"
+                                name="host-experience"
+                                value={option.value}
+                                checked={hostForm.experience === option.value}
+                                onChange={(e) => handleHostInputChange("experience", e.target.value)}
+                                required={index === 0}
+                              />
+                              <span>{option.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">
+                          Quick introduction <span className="text-slate-400">(optional)</span>
+                        </label>
                         <textarea
-                          value={hostForm.message}
-                          onChange={(e) => handleHostInputChange("message", e.target.value)}
+                          value={hostForm.introduction}
+                          onChange={(e) => handleHostInputChange("introduction", e.target.value)}
                           rows={3}
                           className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
-                          placeholder="Hãy chia sẻ kỳ vọng và điểm nổi bật của bất động sản."
-                          required
+                          placeholder="Share what makes your property special."
                         />
                       </div>
                       <div className="flex flex-wrap gap-3">
@@ -776,7 +823,7 @@ export default function Profile() {
                           onClick={() => setHostFormOpen(false)}
                           className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white"
                         >
-                          Huỷ
+                          Cancel
                         </button>
                         <button
                           type="submit"
@@ -786,7 +833,7 @@ export default function Profile() {
                           {isSubmittingHost && (
                             <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                           )}
-                          Gửi yêu cầu
+                          Submit request
                         </button>
                       </div>
                     </form>
@@ -800,13 +847,13 @@ export default function Profile() {
                       className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                     >
                       <Building2 className="h-4 w-4" />
-                      Đăng ký làm người đăng tin
+                      Apply to become a host
                     </button>
                   )}
 
                   {hostStatus === "rejected" && (
                     <p className="text-xs text-rose-600">
-                      Đơn gần nhất chưa đạt yêu cầu. Bạn có thể bổ sung thông tin và gửi lại.
+                      Your previous request was not approved. Update the info above and apply again.
                     </p>
                   )}
                 </div>

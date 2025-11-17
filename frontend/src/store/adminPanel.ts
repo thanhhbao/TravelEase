@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useAuthStore, type HostStatus, type UserRole } from "./auth";
+import { assignUserRole as assignUserRoleApi, requestHostAccess as requestHostAccessApi } from "../lib/api";
 
 const createId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -40,6 +41,10 @@ export type PropertyListing = {
   lastUpdated: string;
   views: number;
   inquiries: number;
+  monthlyRevenue: number;
+  activeTenants: number;
+  bookingsCount: number;
+  images: string[];
 };
 
 export type HostApplication = {
@@ -49,6 +54,7 @@ export type HostApplication = {
   email: string;
   phone?: string;
   city?: string;
+  inventory?: string;
   experience: string;
   message: string;
   preferredContact?: string;
@@ -71,6 +77,7 @@ type HostApplicationPayload = {
   email: string;
   phone?: string;
   city?: string;
+  inventory?: string;
   experience: string;
   message: string;
   preferredContact?: string;
@@ -85,10 +92,19 @@ type AdminPanelState = {
   propertyListings: PropertyListing[];
   hostApplications: HostApplication[];
   activityLog: ActivityLogEntry[];
-  assignUserRole: (userId: number, role: UserRole) => void;
+  assignUserRole: (userId: number, role: UserRole, options?: { hostStatus?: HostStatus }) => Promise<void>;
   updateListingStatus: (listingId: string, status: ListingStatus) => void;
-  updateHostApplication: (id: string, status: HostApplicationDecision) => void;
-  registerHostApplication: (payload: HostApplicationPayload) => HostApplicationResult;
+  updateHostApplication: (id: string, status: HostApplicationDecision) => Promise<void>;
+  registerHostApplication: (payload: HostApplicationPayload) => Promise<HostApplicationResult>;
+  createListing: (payload: {
+    title: string;
+    city: string;
+    nightlyRate: number;
+    occupancy: number;
+    hostId: number;
+    hostName: string;
+    images?: string[];
+  }) => Promise<PropertyListing>;
 };
 
 const initialManagedUsers: ManagedUser[] = [
@@ -171,6 +187,13 @@ const initialListings: PropertyListing[] = [
     lastUpdated: "2024-12-10T09:00:00.000Z",
     views: 1340,
     inquiries: 32,
+    monthlyRevenue: 21000000,
+    activeTenants: 6,
+    bookingsCount: 18,
+    images: [
+      "https://images.unsplash.com/photo-1505692794400-5e0fd9c75a53?w=600",
+      "https://images.unsplash.com/photo-1505691938895-1758d7feb511?w=600",
+    ],
   },
   {
     id: "listing-02",
@@ -184,6 +207,12 @@ const initialListings: PropertyListing[] = [
     lastUpdated: "2024-12-11T05:45:00.000Z",
     views: 540,
     inquiries: 12,
+    monthlyRevenue: 0,
+    activeTenants: 0,
+    bookingsCount: 0,
+    images: [
+      "https://images.unsplash.com/photo-1505691723518-36a5ac3be353?w=600",
+    ],
   },
   {
     id: "listing-03",
@@ -197,6 +226,12 @@ const initialListings: PropertyListing[] = [
     lastUpdated: "2024-12-09T12:15:00.000Z",
     views: 860,
     inquiries: 21,
+    monthlyRevenue: 8400000,
+    activeTenants: 2,
+    bookingsCount: 11,
+    images: [
+      "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=600",
+    ],
   },
   {
     id: "listing-04",
@@ -210,6 +245,12 @@ const initialListings: PropertyListing[] = [
     lastUpdated: "2024-12-07T16:30:00.000Z",
     views: 410,
     inquiries: 5,
+    monthlyRevenue: 0,
+    activeTenants: 0,
+    bookingsCount: 0,
+    images: [
+      "https://images.unsplash.com/photo-1505692989986-c88027ec8afb?w=600",
+    ],
   },
 ];
 
@@ -221,6 +262,7 @@ const initialHostApplications: HostApplication[] = [
     email: "yen.renter@gmail.com",
     phone: "0901 234 888",
     city: "Đà Nẵng",
+    inventory: "3 - 5 listings",
     experience: "Đã quản lý homestay gia đình 2 năm",
     message: "Tôi đang chuẩn bị mở 2 căn hộ dịch vụ và muốn đăng tin nhanh chóng.",
     status: "pending",
@@ -233,6 +275,7 @@ const initialHostApplications: HostApplication[] = [
     email: "hang@travelmail.com",
     phone: "0942 775 501",
     city: "Hà Nội",
+    inventory: "1 - 2 listings",
     experience: "Sở hữu 2 căn shophouse, cần kênh cho thuê dài hạn",
     message: "Mong muốn hợp tác để quảng bá chuỗi lưu trú của gia đình.",
     status: "rejected",
@@ -267,27 +310,31 @@ const syncAuthUser = (userId: number, updates: Partial<ManagedUser>) => {
 
 export const useAdminPanelStore = create<AdminPanelState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       managedUsers: initialManagedUsers,
       propertyListings: initialListings,
       hostApplications: initialHostApplications,
       activityLog: initialActivity,
 
-      assignUserRole: (userId, role) => {
+      assignUserRole: async (userId, role, options) => {
+        await assignUserRoleApi(userId, {
+          role,
+          host_status: options?.hostStatus ?? null,
+        });
+
         set((state) => {
           const nextUsers = state.managedUsers.map((user) => {
             if (user.id !== userId) return user;
             const roles = uniqueRoles([role, ...user.roles]);
-            const hostStatus: HostStatus =
-              role === "host"
+            const resolvedHostStatus: HostStatus =
+              options?.hostStatus ??
+              (role === "host"
                 ? "approved"
-                : roles.includes("host")
-                  ? user.hostStatus
-                  : user.hostStatus === "approved"
-                    ? "not_registered"
-                    : user.hostStatus;
-            const updatedUser: ManagedUser = { ...user, role, roles, hostStatus };
-            syncAuthUser(userId, updatedUser);
+                : user.hostStatus === "approved"
+                  ? "not_registered"
+                  : user.hostStatus);
+            const updatedUser: ManagedUser = { ...user, role, roles, hostStatus: resolvedHostStatus };
+            syncAuthUser(userId, { role, roles, hostStatus: resolvedHostStatus });
             return updatedUser;
           });
 
@@ -332,12 +379,21 @@ export const useAdminPanelStore = create<AdminPanelState>()(
         });
       },
 
-      updateHostApplication: (id, status) => {
+      updateHostApplication: async (id, status) => {
+        const target = get().hostApplications.find((app) => app.id === id);
+
+        if (target) {
+          if (status === "approved") {
+            await assignUserRoleApi(target.userId, { role: "host", host_status: "approved" });
+          } else if (status === "rejected") {
+            await assignUserRoleApi(target.userId, { role: "traveler", host_status: "rejected" });
+          }
+        }
+
         set((state) => {
           const applications = state.hostApplications.map((app) =>
             app.id === id ? { ...app, status } : app
           );
-          const target = state.hostApplications.find((app) => app.id === id);
           const nextUsers = target
             ? state.managedUsers.map((user) => {
                 if (user.id !== target.userId) return user;
@@ -349,7 +405,7 @@ export const useAdminPanelStore = create<AdminPanelState>()(
                   roles: status === "approved" ? uniqueRoles([...user.roles, "host"]) : user.roles,
                   hostStatus,
                 };
-                syncAuthUser(user.id, updatedUser);
+                syncAuthUser(user.id, { role: updatedUser.role, roles: updatedUser.roles, hostStatus });
                 return updatedUser;
               })
             : state.managedUsers;
@@ -358,7 +414,7 @@ export const useAdminPanelStore = create<AdminPanelState>()(
             id: createId(),
             type: "host_application",
             title: "Xử lý đơn đăng ký host",
-            description: `Đơn của ${target?.userName ?? "người dùng"} đã ${status}.`,
+                description: `Đơn của ${target?.userName ?? "người dùng"} đã ${status}.`,
             actor: useAuthStore.getState().user?.name ?? "Admin",
             createdAt: new Date().toISOString(),
           };
@@ -372,19 +428,26 @@ export const useAdminPanelStore = create<AdminPanelState>()(
         });
       },
 
-      registerHostApplication: (payload) => {
+      registerHostApplication: async (payload) => {
+        const existingPending = get().hostApplications.find(
+          (app) => app.userId === payload.userId && app.status === "pending"
+        );
+
+        if (existingPending) {
+          return { status: "already_pending", application: existingPending };
+        }
+
+        await requestHostAccessApi({
+          phone: payload.phone,
+          city: payload.city,
+          experience: payload.experience,
+          inventory: payload.inventory,
+          message: payload.message,
+        });
+
         let result: HostApplicationResult | null = null;
 
         set((state) => {
-          const pending = state.hostApplications.find(
-            (app) => app.userId === payload.userId && app.status === "pending"
-          );
-
-          if (pending) {
-            result = { status: "already_pending", application: pending };
-            return state;
-          }
-
           const newApplication: HostApplication = {
             id: createId(),
             status: "pending",
@@ -403,7 +466,7 @@ export const useAdminPanelStore = create<AdminPanelState>()(
                 roles: ["traveler"],
                 hostStatus: "pending",
                 totalListings: 0,
-                lastActive: "Vừa gửi đơn",
+                lastActive: "Just applied",
               };
 
           const users = existing
@@ -432,6 +495,44 @@ export const useAdminPanelStore = create<AdminPanelState>()(
         });
 
         return result!;
+      },
+      createListing: async ({ title, city, nightlyRate, occupancy, hostId, hostName, images }) => {
+        const newListing: PropertyListing = {
+          id: createId(),
+          title,
+          city,
+          nightlyRate,
+          occupancy,
+          hostId,
+          hostName,
+          status: "pending_review",
+          lastUpdated: new Date().toISOString(),
+          views: 0,
+          inquiries: 0,
+          monthlyRevenue: 0,
+          activeTenants: 0,
+          bookingsCount: 0,
+          images: images?.length ? images : [],
+        };
+
+        set((state) => {
+          const entry: ActivityLogEntry = {
+            id: createId(),
+            type: "listing",
+            title: "Tin mới chờ duyệt",
+            description: `${hostName} vừa tạo tin "${title}".`,
+            actor: hostName,
+            createdAt: new Date().toISOString(),
+          };
+
+          return {
+            ...state,
+            propertyListings: [newListing, ...state.propertyListings],
+            activityLog: [entry, ...state.activityLog],
+          };
+        });
+
+        return newListing;
       },
     }),
     {
