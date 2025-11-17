@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plane, ArrowLeftRight, Calendar, Users, Luggage, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Flight {
   id: string;
@@ -21,6 +22,7 @@ interface Flight {
   cabinBaggage: string;
   isDirect: boolean;
   flightClass: string;
+  logo?: string;
 }
 
 const FlightBookingUI: React.FC = () => {
@@ -120,6 +122,43 @@ const FlightBookingUI: React.FC = () => {
     [AIRPORT_OPTIONS, toQuery]
   );
 
+  const navigate = useNavigate();
+
+  const handleSelectFlight = (flight: Flight) => {
+    const detailFlight = {
+      id: Number(flight.id),
+      airline: flight.airline,
+      flightNumber: flight.flightNumber,
+      logo:
+        flight.logo ||
+        `https://logo.clearbit.com/${flight.airline
+          .toLowerCase()
+          .replace(/\s+/g, '')}.com`,
+      from: `${fromAirport.city} (${fromAirport.code})`,
+      to: `${toAirport.city} (${toAirport.code})`,
+      departureTime: flight.departureTime,
+      arrivalTime: flight.arrivalTime,
+      duration: flight.duration,
+      stops: flight.isDirect ? 'Non-stop' : '1 stop',
+      price: flight.price,
+      class: flight.flightClass,
+    };
+
+    navigate(`/flights/${flight.id}`, {
+      state: {
+        flight: detailFlight,
+        search: {
+          pax: passengers,
+          isRoundTrip,
+          departureDate,
+          returnDate: isRoundTrip ? returnDate : null,
+          from: fromAirport,
+          to: toAirport,
+        },
+      },
+    });
+  };
+
   const flights: Flight[] = [
     {
       id: '1',
@@ -139,7 +178,8 @@ const FlightBookingUI: React.FC = () => {
       checkedBaggage: '20 Kg',
       cabinBaggage: '7 Kg',
       isDirect: true,
-      flightClass: 'Economy Class'
+      flightClass: 'Economy Class',
+      logo: 'https://logo.clearbit.com/garuda-indonesia.com',
     },
     {
       id: '2',
@@ -159,7 +199,8 @@ const FlightBookingUI: React.FC = () => {
       checkedBaggage: '20 Kg',
       cabinBaggage: '7 Kg',
       isDirect: true,
-      flightClass: 'Economy Class'
+      flightClass: 'Economy Class',
+      logo: 'https://logo.clearbit.com/qatarairways.com',
     }
   ];
 
@@ -667,7 +708,10 @@ const FlightBookingUI: React.FC = () => {
                         <span className="text-4xl font-bold text-gray-900">{flight.price.toFixed(2)}</span>
                         <span className="text-gray-500 text-sm"> / person</span>
                       </div>
-                      <button className="bg-blue-600 text-white px-10 py-3.5 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                      <button
+                        onClick={() => handleSelectFlight(flight)}
+                        className="bg-blue-600 text-white px-10 py-3.5 rounded-xl font-semibold hover:bg-blue-700 transition-all duration-300 hover:scale-105 hover:shadow-lg"
+                      >
                         Select Flight
                       </button>
                     </div>

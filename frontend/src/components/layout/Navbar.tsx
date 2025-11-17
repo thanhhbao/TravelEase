@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Menu, X, User, LogOut, Calendar, Plane, Home } from "lucide-react";
+import { Menu, X, User, LogOut, Calendar, Plane, Home, Shield, Building2 } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
 import logoImage from '/public/images/logo.png';
 
@@ -99,6 +99,26 @@ export default function Navbar() {
 
                 {isUserMenuOpen && (
                   <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-200 py-2 z-50">
+                    {user?.capabilities?.canAccessAdmin && (
+                      <Link
+                        to="/admin"
+                        className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <Shield className="h-4 w-4" />
+                        <span>Admin Panel</span>
+                      </Link>
+                    )}
+                    {(user?.roles?.includes("host") || user?.role === "host" || user?.capabilities?.canPostListings) && (
+                      <Link
+                        to="/host/workspace"
+                        className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        <Building2 className="h-4 w-4" />
+                        <span>Host Workspace</span>
+                      </Link>
+                    )}
                     <Link
                       to="/my/profile"
                       className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
@@ -192,6 +212,24 @@ export default function Navbar() {
                   >
                     Profile
                   </Link>
+                  {user?.capabilities?.canAccessAdmin && (
+                    <Link
+                      to="/admin"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-200"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Admin Panel
+                    </Link>
+                  )}
+                  {(user?.roles?.includes("host") || user?.role === "host" || user?.capabilities?.canPostListings) && (
+                    <Link
+                      to="/host/workspace"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-200"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Host Workspace
+                    </Link>
+                  )}
                   <Link
                     to="/my/bookings"
                     className="block px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-lg transition-colors duration-200"

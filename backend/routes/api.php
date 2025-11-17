@@ -16,6 +16,7 @@ use App\Http\Controllers\UserAccountDeletionController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\StripeWebhookController;
+use App\Http\Controllers\Admin\UserRoleController;
 
 // Lấy user bằng Bearer token (Sanctum PAT)
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -36,6 +37,9 @@ Route::middleware(['auth:sanctum', 'throttle:6,1'])->post('/user/delete/code', [
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::middleware('auth:sanctum')->post('/user/delete', [UserAccountDeletionController::class, 'destroy'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->post('/admin/users/{user}/role', [UserRoleController::class, 'update'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ===== Bookings =====

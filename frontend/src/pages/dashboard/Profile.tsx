@@ -1,9 +1,27 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 import {
-  Mail, Phone, Camera, Crown, Gift, MapPin, Lock, KeyRound, Bell, Check, X, AlertTriangle, Trash2, User as UserIcon
+  Mail,
+  Phone,
+  Camera,
+  Crown,
+  Gift,
+  MapPin,
+  Lock,
+  KeyRound,
+  Bell,
+  Check,
+  X,
+  AlertTriangle,
+  Trash2,
+  User as UserIcon,
+  Building2,
+  Sparkles,
+  BadgeCheck,
 } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
+import { useAdminPanelStore } from "../../store/adminPanel";
 
 // Optional wave divider reused from Home for visual continuity
 const WaveDivider = () => (
@@ -15,16 +33,31 @@ const WaveDivider = () => (
   </svg>
 );
 
+const hostStatusBadgeMap = {
+  not_registered: "bg-slate-100 text-slate-600",
+  pending: "bg-blue-50 text-blue-600",
+  approved: "bg-emerald-50 text-emerald-700",
+  rejected: "bg-rose-50 text-rose-600",
+} as const;
+
+const hostStatusCopy = {
+  not_registered: "Chưa đăng ký làm người đăng tin",
+  pending: "Đã gửi yêu cầu, chờ admin duyệt",
+  approved: "Bạn đang là người đăng tin",
+  rejected: "Cần bổ sung thông tin để xét duyệt lại",
+} as const;
+
 export default function Profile() {
   const {
     user,
     updateProfile,
     requestPasswordChangeCode,
     changePassword,
-    requestAccountDeletionCode,  
-    deleteAccount,                
+    requestAccountDeletionCode,
+    deleteAccount,
     isBootstrapping,
   } = useAuthStore();
+  const { registerHostApplication, hostApplications } = useAdminPanelStore();
 
   const avatarOf = (name?: string, url?: string | null) => {
     if (url) return url;
@@ -53,6 +86,63 @@ export default function Profile() {
 
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  const [hostFormOpen, setHostFormOpen] = useState(false);
+  const [hostForm, setHostForm] = useState({
+    phone: user?.phone ?? "",
+    city: "",
+    experience: "",
+    message: "",
+  });
+  const [hostFormStatus, setHostFormStatus] = useState<null | { type: "success" | "error"; message: string }>(null);
+  const [isSubmittingHost, setIsSubmittingHost] = useState(false);
+  const hostStatus = user?.hostStatus ?? "not_registered";
+  const hostStatusKey = (hostStatus in hostStatusBadgeMap ? hostStatus : "not_registered") as keyof typeof hostStatusBadgeMap;
+  const myHostApplication = user ? hostApplications.find((app) => app.userId === user.id) : undefined;
+
+  const handleHostInputChange = (field: keyof typeof hostForm, value: string) => {
+    setHostForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleHostApplicationSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!user || isSubmittingHost) return;
+
+    setHostFormStatus(null);
+    setIsSubmittingHost(true);
+
+    try {
+      const result = registerHostApplication({
+        userId: user.id,
+        userName: user.name ?? "Người dùng",
+        email: user.email ?? "",
+        phone: hostForm.phone,
+        city: hostForm.city,
+        experience: hostForm.experience,
+        message: hostForm.message,
+      });
+
+      if (result.status === "created") {
+        setHostFormStatus({
+          type: "success",
+          message: "Đã gửi yêu cầu. Đội ngũ admin sẽ phản hồi trong vòng 24 giờ.",
+        });
+        setHostFormOpen(false);
+      } else {
+        setHostFormStatus({
+          type: "error",
+          message: "Bạn đang có một yêu cầu chờ duyệt. Vui lòng đợi phản hồi.",
+        });
+      }
+    } catch {
+      setHostFormStatus({
+        type: "error",
+        message: "Không thể gửi yêu cầu lúc này. Vui lòng thử lại sau.",
+      });
+    } finally {
+      setIsSubmittingHost(false);
+    }
+  };
 
   // === Password states ===
   const [showSecurity, setShowSecurity] = useState(false);
@@ -98,6 +188,10 @@ export default function Profile() {
       });
       setAvatarPreview((user.avatar as string | null) ?? avatarOf(user.name));
       setAvatarFile(null);
+      setHostForm((prev) => ({
+        ...prev,
+        phone: user.phone ?? prev.phone,
+      }));
     }
   }, [user]);
 
@@ -561,6 +655,164 @@ export default function Profile() {
 
           {/* Right: Settings column */}
           <div className="space-y-6">
+            {/* Host registration */}
+            <div className="relative rounded-3xl border border-amber-100 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-6 shadow-xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Đăng tin cho thuê</h3>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Trở thành đối tác host của TravelEase để quảng bá phòng và căn hộ của bạn.
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${hostStatusBadgeMap[hostStatusKey]}`}
+                >
+                  {hostStatusCopy[hostStatusKey]}
+                </span>
+              </div>
+
+              {hostStatus === "approved" ? (
+                <div className="mt-4 space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Bạn đã có toàn quyền đăng tin. Quản lý lịch, giá và đơn đặt phòng trong không gian riêng dành cho host.
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1">
+                      <BadgeCheck className="h-3.5 w-3.5 text-emerald-600" />
+                      Ưu tiên duyệt tin
+                    </span>
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1">
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                      Công cụ định giá
+                    </span>
+                  </div>
+                  <Link
+                    to="/host/workspace"
+                    className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    Quản lý Host Workspace
+                  </Link>
+                </div>
+              ) : hostStatus === "pending" ? (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-blue-100 bg-white/70 p-4 text-sm text-slate-700">
+                    <p>
+                      Đã nhận đơn đăng ký {myHostApplication ? new Date(myHostApplication.submittedAt).toLocaleDateString("vi-VN") : "gần đây"}.
+                    </p>
+                    <p className="mt-1 text-slate-500">
+                      Chúng tôi sẽ phản hồi qua email <strong>{user.email}</strong>.
+                    </p>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Nếu cần cập nhật thông tin, hãy chỉnh sửa hồ sơ và liên hệ đội ngũ hỗ trợ.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Nhận hỗ trợ định giá, công cụ quản lý và đội ngũ chăm sóc khách hàng 24/7 khi đăng ký làm người đăng tin.
+                  </p>
+
+                  {hostFormStatus && (
+                    <div
+                      className={`rounded-xl border px-4 py-3 text-sm ${
+                        hostFormStatus.type === "success"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : "border-rose-200 bg-rose-50 text-rose-700"
+                      }`}
+                    >
+                      {hostFormStatus.message}
+                    </div>
+                  )}
+
+                  {hostFormOpen ? (
+                    <form className="space-y-4" onSubmit={handleHostApplicationSubmit}>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Số điện thoại</label>
+                        <input
+                          type="tel"
+                          value={hostForm.phone}
+                          onChange={(e) => handleHostInputChange("phone", e.target.value)}
+                          className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Thành phố</label>
+                        <input
+                          type="text"
+                          value={hostForm.city}
+                          onChange={(e) => handleHostInputChange("city", e.target.value)}
+                          className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
+                          placeholder="Ví dụ: Đà Nẵng"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Kinh nghiệm / Tài sản</label>
+                        <input
+                          type="text"
+                          value={hostForm.experience}
+                          onChange={(e) => handleHostInputChange("experience", e.target.value)}
+                          className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
+                          placeholder="Số lượng phòng, kinh nghiệm quản lý..."
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Giới thiệu nhanh</label>
+                        <textarea
+                          value={hostForm.message}
+                          onChange={(e) => handleHostInputChange("message", e.target.value)}
+                          rows={3}
+                          className="w-full rounded-xl border border-amber-200 bg-white/90 px-4 py-2.5 focus:ring-2 focus:ring-amber-200 outline-none"
+                          placeholder="Hãy chia sẻ kỳ vọng và điểm nổi bật của bất động sản."
+                          required
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setHostFormOpen(false)}
+                          className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white"
+                        >
+                          Huỷ
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmittingHost}
+                          className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                        >
+                          {isSubmittingHost && (
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          )}
+                          Gửi yêu cầu
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHostFormStatus(null);
+                        setHostFormOpen(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Đăng ký làm người đăng tin
+                    </button>
+                  )}
+
+                  {hostStatus === "rejected" && (
+                    <p className="text-xs text-rose-600">
+                      Đơn gần nhất chưa đạt yêu cầu. Bạn có thể bổ sung thông tin và gửi lại.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Security (collapsed by default) */}
             <div className="relative rounded-3xl border border-sky-100 bg-white/90 backdrop-blur p-6 shadow-xl">
               <div className="flex items-start justify-between gap-4">

@@ -23,7 +23,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { AIRPORTS } from "../data/airports";
+import { AIRPORTS, type Airport } from "../data/airports";
 
 // --- Types ---
 type FeaturedHotel = {
@@ -799,7 +799,7 @@ export default function Home() {
   const updateAirportSuggestions = (value: string) => {
     const q = value.trim().toLowerCase();
     const filtered = (q
-      ? AIRPORTS.filter((airport) => {
+      ? AIRPORTS.filter((airport: Airport) => {
           return (
             airport.city.toLowerCase().includes(q) ||
             airport.name.toLowerCase().includes(q) ||
@@ -810,7 +810,7 @@ export default function Home() {
       : AIRPORTS
     )
       .slice(0, 8)
-      .map<SuggestionItem>((airport) => {
+      .map<SuggestionItem>((airport: Airport) => {
         const valueString = `${airport.city}${
           airport.name ? ` - ${airport.name}` : ""
         }, ${airport.country}`;
