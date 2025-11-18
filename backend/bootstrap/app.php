@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Chỉ alias nếu bạn dùng verified
         $middleware->alias([
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'admin' => \App\Http\Middleware\EnsureAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

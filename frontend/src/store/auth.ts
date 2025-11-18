@@ -36,7 +36,22 @@ export interface User {
     favorites?: number;
     reviews?: number;
   } | null;
+  role?: UserRole;
+  roles?: UserRole[];
+  permissions?: string[];
+  hostStatus?: HostStatus;
+  capabilities?: UserCapabilities;
 }
+
+export type UserRole = "admin" | "traveler" | "host";
+export type HostStatus = "not_registered" | "pending" | "approved" | "rejected";
+
+export type UserCapabilities = {
+  canAccessAdmin: boolean;
+  canManageUsers: boolean;
+  canPostListings: boolean;
+  canPublishListings: boolean;
+};
 
 type AuthState = {
   user: User | null;
@@ -69,6 +84,9 @@ type AuthState = {
   }) => Promise<void>;
   requestAccountDeletionCode: () => Promise<void>;
   deleteAccount: (payload: { code: string }) => Promise<void>;
+  patchUser: (updates: Partial<User>) => void;
+  setUserRole: (role: UserRole) => void;
+  setHostStatus: (status: HostStatus) => void;
 };
 
 const resolveAvatarUrl = (url?: string | null) => {
@@ -93,6 +111,72 @@ const withNormalizedAvatar = (user: User | null): User | null => {
   return { ...user, avatar: resolveAvatarUrl(user.avatar) ?? undefined };
 };
 
+const uniqueRoles = (roles: UserRole[]) => Array.from(new Set(roles));
+
+const detectFallbackRole = (user: User): UserRole => {
+  if (user.role) return user.role;
+  if (user.roles?.length) return user.roles[0];
+  const isAdminLike = user.email?.endsWith("@travelease.com");
+  return isAdminLike ? "admin" : "traveler";
+};
+
+const buildPermissions = (roles: UserRole[], hostStatus: HostStatus) => {
+  const perms = new Set<string>(["dashboard.view", "profile.update"]);
+
+  if (roles.includes("admin")) {
+    perms.add("admin.access");
+    perms.add("users.manage");
+    perms.add("listings.review");
+    perms.add("listings.publish");
+  }
+
+  if (roles.includes("host") || hostStatus === "approved") {
+    perms.add("listings.create");
+    perms.add("listings.manage");
+  }
+
+  if (hostStatus === "pending") {
+    perms.add("host.apply");
+  }
+
+  return Array.from(perms);
+};
+
+const buildCapabilities = (permissions: string[]): UserCapabilities => ({
+  canAccessAdmin: permissions.includes("admin.access"),
+  canManageUsers: permissions.includes("users.manage"),
+  canPostListings: permissions.includes("listings.create"),
+  canPublishListings: permissions.includes("listings.publish"),
+});
+
+const withUserMetadata = (user: User | null): User | null => {
+  if (!user) return null;
+
+  const avatarReady = withNormalizedAvatar(user);
+  if (!avatarReady) return null;
+  const role = detectFallbackRole(avatarReady);
+  const roles = avatarReady.roles?.length
+    ? uniqueRoles([role, ...avatarReady.roles])
+    : [role];
+  const hostStatus =
+    avatarReady.hostStatus ?? (roles.includes("host") ? "approved" : "not_registered");
+  const permissions =
+    avatarReady.permissions?.length ?? false
+      ? avatarReady.permissions!
+      : buildPermissions(roles, hostStatus);
+  const capabilities = avatarReady.capabilities ?? buildCapabilities(permissions);
+
+  return {
+    ...avatarReady,
+    role,
+    roles,
+    hostStatus,
+    permissions,
+    capabilities,
+  };
+};
+
+const normalizeUser = (user: User | null) => withUserMetadata(user);
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -113,7 +197,7 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const { data } = await me();
-          const normalized = withNormalizedAvatar(data as User);
+          const normalized = normalizeUser(data as User);
           set({ user: normalized, isAuthenticated: true, isBootstrapping: false });
         } catch (error) {
           if (axios.isAxiosError(error) && error.response?.status === 401) {
@@ -132,10 +216,11 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const { data } = await me();
-          const normalized = withNormalizedAvatar(data as User);
+          const normalized = normalizeUser(data as User);
           set({ user: normalized, isAuthenticated: true, isBootstrapping: false });
         } catch {
-          set({ user: user ?? null, isAuthenticated: Boolean(user), isBootstrapping: false });
+          const decorated = normalizeUser(user ?? null);
+          set({ user: decorated, isAuthenticated: Boolean(decorated), isBootstrapping: false });
         }
       },
 
@@ -153,14 +238,14 @@ export const useAuthStore = create<AuthState>()(
           setAuthToken(token);
 
           try {
-            const { data } = await me();
-            const normalized = withNormalizedAvatar(data as User);
-            set({ user: normalized, isAuthenticated: true, isBootstrapping: false });
-          } catch {
-            const fallbackUser = (response as { user?: User }).user ?? null;
-            const normalizedFallback = withNormalizedAvatar(fallbackUser);
-            set({ user: normalizedFallback, isAuthenticated: Boolean(normalizedFallback), isBootstrapping: false });
-          }
+          const { data } = await me();
+          const normalized = normalizeUser(data as User);
+          set({ user: normalized, isAuthenticated: true, isBootstrapping: false });
+        } catch {
+          const fallbackUser = (response as { user?: User }).user ?? null;
+          const normalizedFallback = normalizeUser(fallbackUser);
+          set({ user: normalizedFallback, isAuthenticated: Boolean(normalizedFallback), isBootstrapping: false });
+        }
 
           return;
         }
@@ -220,7 +305,7 @@ export const useAuthStore = create<AuthState>()(
         }
 
         const { data } = await updateProfileApi(formData);
-        const updatedUser = withNormalizedAvatar(data?.user as User | null);
+        const updatedUser = normalizeUser(data?.user as User | null);
         if (!updatedUser) {
           throw new Error("Profile update did not return user data");
         }
@@ -257,16 +342,17 @@ export const useAuthStore = create<AuthState>()(
           const merged = existingUser
             ? { ...existingUser, ...verifiedUser }
             : verifiedUser;
+          const decorated = normalizeUser(merged ?? null);
           set({
-            user: merged,
+            user: decorated,
             isAuthenticated: true,
           });
-          return merged;
+          return decorated;
         }
 
         const existing = get().user;
         if (existing && existing.email === email) {
-          const updated = { ...existing, email_verified_at: new Date().toISOString() };
+          const updated = normalizeUser({ ...existing, email_verified_at: new Date().toISOString() });
           set({ user: updated });
           return updated;
         }
@@ -287,6 +373,33 @@ export const useAuthStore = create<AuthState>()(
 
         set({ user: null, isAuthenticated: false });
         setAuthToken(null);
+      },
+      patchUser: (updates) => {
+        set((state) => {
+          if (!state.user) return state;
+          const merged = normalizeUser({ ...state.user, ...updates });
+          return { ...state, user: merged };
+        });
+      },
+      setUserRole: (role) => {
+        set((state) => {
+          if (!state.user) return state;
+          const existingRoles = state.user.roles ?? [];
+          const roles = uniqueRoles([role, ...existingRoles]);
+          const hostStatus =
+            role === "host" && state.user.hostStatus !== "approved"
+              ? "approved"
+              : state.user.hostStatus;
+          const merged = normalizeUser({ ...state.user, role, roles, hostStatus });
+          return { ...state, user: merged };
+        });
+      },
+      setHostStatus: (status) => {
+        set((state) => {
+          if (!state.user) return state;
+          const merged = normalizeUser({ ...state.user, hostStatus: status });
+          return { ...state, user: merged };
+        });
       },
     }),
     {

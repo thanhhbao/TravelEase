@@ -1,13 +1,20 @@
 // src/components/ProtectedRoute.tsx
 import { Navigate, useLocation } from "react-router-dom";
-import { useAuthStore } from "../store/auth";
+import { useAuthStore, type UserRole } from "../store/auth";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireVerified?: boolean; // mặc định false
+  allowedRoles?: UserRole[];
+  fallback?: React.ReactNode;
 }
 
-export default function ProtectedRoute({ children, requireVerified = false }: ProtectedRouteProps) {
+export default function ProtectedRoute({
+  children,
+  requireVerified = false,
+  allowedRoles,
+  fallback,
+}: ProtectedRouteProps) {
   const location = useLocation();
   const { isAuthenticated, user, isBootstrapping } = useAuthStore();
 
@@ -28,6 +35,16 @@ export default function ProtectedRoute({ children, requireVerified = false }: Pr
   // Yêu cầu email verified nhưng user chưa verify => chuyển tới /verify-email
   if (requireVerified && user && !user.email_verified_at) {
     return <Navigate to="/verify-email" replace />;
+  }
+
+  if (allowedRoles?.length) {
+    const roles = user.roles?.length ? user.roles : user.role ? [user.role] : [];
+    const canAccess = roles.some((role) => allowedRoles.includes(role));
+
+    if (!canAccess) {
+      if (fallback) return <>{fallback}</>;
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

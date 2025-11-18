@@ -27,6 +27,10 @@ import Checkout from './pages/checkout/Checkout';
 import FlightDetails from './pages/flights/FlightDetails';
 import Services from './pages/Services';
 import Contact from './pages/Contact';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminListings from './pages/admin/AdminListings';
+import HostWorkspace from './pages/host/HostWorkspace';
 
 function App() {
   const { bootstrap, isBootstrapping } = useAuthStore();
@@ -79,6 +83,38 @@ function App() {
               <Route path="tickets" element={<Tickets />} />
               <Route path="profile" element={<Profile />} />
             </Route>
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminUsers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/listings"
+              element={
+                <ProtectedRoute allowedRoles={["admin"]}>
+                  <AdminListings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/host/workspace"
+              element={
+                <ProtectedRoute allowedRoles={["host", "admin"]}>
+                  <HostWorkspace />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Service Routes */}
             <Route path="/services" element={<Services />} />

@@ -169,6 +169,19 @@ export const requestAccountDeletionCode = () =>
 export const deleteAccount = (payload: { code: string }) =>
   api.post("/api/user/delete", payload);
 
+export const requestHostAccess = (payload: {
+  phone?: string;
+  city?: string;
+  inventory?: string;
+  experience?: string;
+  message?: string;
+}) => api.post("/api/user/host/request", payload);
+
+export const assignUserRole = (
+  userId: number,
+  payload: { role: string; host_status?: string | null }
+) => api.post(`/api/admin/users/${userId}/role`, payload);
+
 /* =====================================================
  * ================ GOOGLE AUTH =======================
  * ===================================================== */
