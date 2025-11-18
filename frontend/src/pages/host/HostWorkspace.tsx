@@ -1,9 +1,24 @@
 import { useMemo, useState, useEffect, useRef, type FormEvent, type KeyboardEvent, type ChangeEvent } from "react";
-import { Building2, PlusCircle, AlertTriangle, Clock4, Upload, BarChart3 } from "lucide-react";
+import { Building2, PlusCircle, AlertTriangle, Clock4, Upload, TrendingUp, Pencil, Trash2 } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
-import { useAdminPanelStore, type ListingStatus } from "../../store/adminPanel";
+import { fetchHostListings, createHostListing, updateHostListing, deleteHostListing } from "../../lib/api";
 
-const statusBadge: Record<ListingStatus, string> = {
+type HostListing = {
+  id: number;
+  title: string;
+  city: string;
+  nightly_rate: number;
+  occupancy: number;
+  status: "pending_review" | "published" | "rejected";
+  images: string[];
+  description?: string | null;
+  inquiries?: number;
+  monthlyRevenue?: number;
+  activeTenants?: number;
+  bookingsCount?: number;
+};
+
+const statusBadge: Record<HostListing["status"], string> = {
   published: "bg-emerald-100 text-emerald-700",
   pending_review: "bg-blue-50 text-blue-600",
   rejected: "bg-rose-100 text-rose-700",
@@ -19,12 +34,26 @@ const formatCash = (value: number) =>
 
 export default function HostWorkspace() {
   const { user } = useAuthStore();
-  const { propertyListings, hostApplications, createListing } = useAdminPanelStore();
+  const [myListings, setMyListings] = useState<HostListing[]>([]);
+  const [isListingLoading, setIsListingLoading] = useState(true);
+  const [editingListing, setEditingListing] = useState<HostListing | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<number | null>(null);
 
-  const myListings = useMemo(
-    () => propertyListings.filter((listing) => listing.hostId === user?.id),
-    [propertyListings, user?.id]
-  );
+  const loadListings = async () => {
+    try {
+      setIsListingLoading(true);
+      const { data } = await fetchHostListings();
+      setMyListings(data?.data ?? data ?? []);
+    } catch (error) {
+      console.error("Failed to load host listings", error);
+    } finally {
+      setIsListingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadListings();
+  }, []);
 
   const hostMetrics = useMemo(() => {
     const published = myListings.filter((listing) => listing.status === "published").length;
@@ -33,7 +62,7 @@ export default function HostWorkspace() {
 
     const estimatedMonthly = myListings
       .filter((listing) => listing.status === "published")
-      .reduce((acc, listing) => acc + listing.nightlyRate * listing.occupancy * 6, 0);
+      .reduce((acc, listing) => acc + listing.nightly_rate * listing.occupancy * 6, 0);
 
     return {
       total: myListings.length,
@@ -44,24 +73,10 @@ export default function HostWorkspace() {
     };
   }, [myListings]);
 
-  const revenueByCity = useMemo(() => {
-    const tally = new Map<string, number>();
-    myListings.forEach((listing) => {
-      if (listing.status === "published") {
-        const segment = listing.nightlyRate * listing.occupancy * 6;
-        tally.set(listing.city, (tally.get(listing.city) ?? 0) + segment);
-      }
-    });
-    return Array.from(tally.entries())
-      .map(([city, value]) => ({ city, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 4);
-  }, [myListings]);
-
   const avgNightlyRate = useMemo(() => {
     const published = myListings.filter((listing) => listing.status === "published");
     if (!published.length) return 0;
-    return published.reduce((total, listing) => total + listing.nightlyRate, 0) / published.length;
+    return published.reduce((total, listing) => total + listing.nightly_rate, 0) / published.length;
   }, [myListings]);
 
   const avgCapacity = useMemo(() => {
@@ -70,67 +85,107 @@ export default function HostWorkspace() {
     return published.reduce((total, listing) => total + listing.occupancy, 0) / published.length;
   }, [myListings]);
 
-  const pendingApplication = hostApplications.find(
-    (application) => application.userId === user?.id && application.status === "pending"
-  );
+  const revenueInsights = useMemo(() => {
+    const published = myListings.filter((listing) => listing.status === "published");
+    const pending = myListings.filter((listing) => listing.status === "pending_review");
+
+    const computeRevenue = (listing: HostListing) =>
+      listing.monthlyRevenue ?? Math.round(listing.nightly_rate * Math.max(listing.occupancy, 1) * 6);
+
+    const realizedRevenue = published.reduce((acc, listing) => acc + computeRevenue(listing), 0);
+    const pendingRevenue = pending.reduce((acc, listing) => acc + computeRevenue(listing), 0);
+    const bookingVolume = published.reduce(
+      (acc, listing) =>
+        acc + (listing.bookingsCount ?? Math.max(1, Math.round(computeRevenue(listing) / Math.max(listing.nightly_rate, 1)))),
+      0
+    );
+    const topListings = published
+      .map((listing) => ({
+        id: listing.id,
+        title: listing.title,
+        city: listing.city,
+        revenue: computeRevenue(listing),
+        status: listing.status,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 4);
+
+    return {
+      realizedRevenue,
+      pendingRevenue,
+      bookingVolume,
+      topListings,
+    };
+  }, [myListings]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formFeedback, setFormFeedback] = useState<null | { type: "success" | "error"; text: string }>(null);
   const [imageError, setImageError] = useState("");
-  const [listingForm, setListingForm] = useState({
+  const blankForm = {
     title: "",
     city: "",
     nightlyRate: "",
     occupancy: "",
     images: [] as string[],
     imageInput: "",
-  });
+  };
+  const [listingForm, setListingForm] = useState(blankForm);
   const blobUrlsRef = useRef<string[]>([]);
   const [fieldErrors, setFieldErrors] = useState({
     nightlyRate: "",
     occupancy: "",
   });
 
-  const MIN_PRICE = 100000;
-  const MAX_PRICE = 100000000;
+  const MIN_PRICE = 50000;
+  const MAX_PRICE = 1000000000;
   const MIN_OCCUPANCY = 1;
   const MAX_OCCUPANCY = 20;
 
-  const canCreateListing = (user?.hostStatus === "approved" || user?.role === "admin") && !pendingApplication;
+  const canCreateListing = (user?.hostStatus === "approved" || user?.role === "admin") && user?.hostStatus !== "pending";
 
   const handleListingInput = (field: keyof typeof listingForm, value: string) => {
     if (field === "nightlyRate") {
-      const digits = value.replace(/[^0-9]/g, "");
-      if (!digits) {
-        setListingForm((prev) => ({ ...prev, nightlyRate: "" }));
+      const digitsOnly = value.replace(/[^0-9]/g, "");
+      setListingForm((prev) => ({ ...prev, nightlyRate: digitsOnly }));
+
+      if (!digitsOnly) {
         setFieldErrors((prev) => ({ ...prev, nightlyRate: "Only numbers are allowed." }));
-        return;
+      } else {
+        const parsed = Number(digitsOnly);
+        if (parsed < MIN_PRICE) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            nightlyRate: `Minimum ${MIN_PRICE.toLocaleString("vi-VN")} VND`,
+          }));
+        } else if (parsed > MAX_PRICE) {
+          setFieldErrors((prev) => ({
+            ...prev,
+            nightlyRate: `Maximum ${MAX_PRICE.toLocaleString("vi-VN")} VND`,
+          }));
+        } else {
+          setFieldErrors((prev) => ({ ...prev, nightlyRate: "" }));
+        }
       }
-      const parsed = Number(digits);
-      let error = "";
-      if (parsed < MIN_PRICE) error = `Minimum ${MIN_PRICE.toLocaleString("vi-VN")} VND`;
-      if (parsed > MAX_PRICE) error = `Maximum ${MAX_PRICE.toLocaleString("vi-VN")} VND`;
-      const clamped = Math.min(Math.max(parsed, MIN_PRICE), MAX_PRICE);
-      setListingForm((prev) => ({ ...prev, nightlyRate: String(clamped) }));
-      setFieldErrors((prev) => ({ ...prev, nightlyRate: error }));
       return;
     }
 
     if (field === "occupancy") {
-      const digits = value.replace(/[^0-9]/g, "");
-      if (!digits) {
-        setListingForm((prev) => ({ ...prev, occupancy: "" }));
+      const digitsOnly = value.replace(/[^0-9]/g, "");
+      setListingForm((prev) => ({ ...prev, occupancy: digitsOnly }));
+
+      if (!digitsOnly) {
         setFieldErrors((prev) => ({ ...prev, occupancy: "Only numbers are allowed." }));
-        return;
+      } else {
+        const parsed = Number(digitsOnly);
+        if (parsed < MIN_OCCUPANCY) {
+          setFieldErrors((prev) => ({ ...prev, occupancy: `Min ${MIN_OCCUPANCY} guest` }));
+        } else if (parsed > MAX_OCCUPANCY) {
+          setFieldErrors((prev) => ({ ...prev, occupancy: `Max ${MAX_OCCUPANCY} guests` }));
+        } else {
+          setFieldErrors((prev) => ({ ...prev, occupancy: "" }));
+        }
       }
-      const parsed = Number(digits);
-      let error = "";
-      if (parsed < MIN_OCCUPANCY) error = `Min ${MIN_OCCUPANCY} guest`;
-      if (parsed > MAX_OCCUPANCY) error = `Max ${MAX_OCCUPANCY} guests`;
-      const clamped = Math.min(Math.max(parsed, MIN_OCCUPANCY), MAX_OCCUPANCY);
-      setListingForm((prev) => ({ ...prev, occupancy: String(clamped) }));
-      setFieldErrors((prev) => ({ ...prev, occupancy: error }));
       return;
     }
 
@@ -245,6 +300,14 @@ export default function HostWorkspace() {
     };
   }, []);
 
+  const resetFormState = () => {
+    setListingForm(blankForm);
+    setEditingListing(null);
+    setFieldErrors({ nightlyRate: "", occupancy: "" });
+    blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    blobUrlsRef.current = [];
+  };
+
   const handleListingSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user || !canCreateListing || isSubmitting) return;
@@ -256,40 +319,76 @@ export default function HostWorkspace() {
     setIsSubmitting(true);
 
     try {
-      await createListing({
+      const payload = {
         title: listingForm.title.trim(),
         city: listingForm.city.trim(),
-        nightlyRate: Number(listingForm.nightlyRate),
+        nightly_rate: Number(listingForm.nightlyRate),
         occupancy: Number(listingForm.occupancy),
-        hostId: user.id,
-        hostName: user.name ?? "Host",
         images: listingForm.images,
-      });
+      };
 
-      setListingForm({
-        title: "",
-        city: "",
-        nightlyRate: "",
-        occupancy: "",
-        images: [],
-        imageInput: "",
-      });
-      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      blobUrlsRef.current = [];
+      if (editingListing) {
+        await updateHostListing(editingListing.id, payload);
+        setFormFeedback({
+          type: "success",
+          text: "Listing updated successfully.",
+        });
+      } else {
+        await createHostListing(payload);
+        setFormFeedback({
+          type: "success",
+          text: "Listing submitted successfully. It will be reviewed shortly.",
+        });
+      }
+
+      resetFormState();
       setIsFormOpen(false);
-      setFieldErrors({ nightlyRate: "", occupancy: "" });
-      setFormFeedback({
-        type: "success",
-        text: "Listing submitted successfully. It will be reviewed shortly.",
-      });
+      await loadListings();
     } catch (error) {
       console.error(error);
       setFormFeedback({
         type: "error",
-        text: "Unable to submit the listing right now. Please try again.",
+        text: "Unable to save the listing right now. Please try again.",
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEditListing = (listing: HostListing) => {
+    setFormFeedback(null);
+    setImageError("");
+    setIsFormOpen(true);
+    setEditingListing(listing);
+    setListingForm({
+      title: listing.title,
+      city: listing.city,
+      nightlyRate: String(listing.nightly_rate),
+      occupancy: String(listing.occupancy),
+      images: listing.images ?? [],
+      imageInput: "",
+    });
+  };
+
+  const handleDeleteListing = async (listing: HostListing) => {
+    if (!window.confirm(`Xóa tin "${listing.title}"?`)) return;
+    setDeleteLoadingId(listing.id);
+    setFormFeedback(null);
+    try {
+      await deleteHostListing(listing.id);
+      if (editingListing?.id === listing.id) {
+        resetFormState();
+        setIsFormOpen(false);
+      }
+      await loadListings();
+    } catch (error) {
+      console.error(error);
+      setFormFeedback({
+        type: "error",
+        text: "Không thể xóa tin này. Vui lòng thử lại.",
+      });
+    } finally {
+      setDeleteLoadingId(null);
     }
   };
 
@@ -330,11 +429,11 @@ export default function HostWorkspace() {
           </div>
         </header>
 
-        {pendingApplication && (
+        {user?.hostStatus === "pending" && (
           <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm text-blue-800">
             <div className="flex flex-wrap items-center gap-2">
               <Clock4 className="h-4 w-4" />
-              Your application from {new Date(pendingApplication.submittedAt).toLocaleDateString("vi-VN")} is being reviewed by our team.
+              Your host application is currently under review. We will notify you via email once approved.
             </div>
           </div>
         )}
@@ -365,52 +464,73 @@ export default function HostWorkspace() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                  Revenue drivers
+                  Doanh số host
                 </p>
-                <h2 className="text-xl font-semibold text-slate-900">Why this projection?</h2>
+                <h2 className="text-xl font-semibold text-slate-900">Thống kê doanh số</h2>
                 <p className="text-sm text-slate-500">
-                  We multiply the average nightly rate, typical guest capacity, and a baseline of six nights per month for each published unit.
+                  Tổng hợp từ các tin đang hiển thị và dữ liệu booking gần nhất.
                 </p>
               </div>
               <span className="rounded-full bg-slate-100 p-3 text-slate-600">
-                <BarChart3 className="h-5 w-5" />
+                <TrendingUp className="h-5 w-5" />
               </span>
             </div>
             <div className="mt-6 grid gap-4 text-sm text-slate-600 sm:grid-cols-3">
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Avg nightly rate</p>
-                <p className="text-lg font-semibold text-slate-900">{formatCash(avgNightlyRate || 0)}</p>
-                <p className="text-xs text-slate-500">Across published listings</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Thực thu tháng này</p>
+                <p className="text-lg font-semibold text-slate-900">{formatCash(revenueInsights.realizedRevenue)}</p>
+                <p className="text-xs text-slate-500">Từ các tin đã phê duyệt</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Avg guests</p>
-                <p className="text-lg font-semibold text-slate-900">{avgCapacity ? avgCapacity.toFixed(1) : "0"} pax</p>
-                <p className="text-xs text-slate-500">Typical capacity per stay</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Growth backlog</p>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Lượt đặt</p>
                 <p className="text-lg font-semibold text-slate-900">
-                  {myListings.filter((listing) => listing.status === "pending_review").length} pending
+                  {revenueInsights.bookingVolume.toLocaleString("vi-VN")}
                 </p>
-                <p className="text-xs text-slate-500">Ready to unlock once approved</p>
+                <p className="text-xs text-slate-500">Trong tháng gần nhất</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Đang chờ duyệt</p>
+                <p className="text-lg font-semibold text-slate-900">{formatCash(revenueInsights.pendingRevenue)}</p>
+                <p className="text-xs text-slate-500">Sẽ mở khóa sau khi duyệt</p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-4 text-sm text-slate-600 sm:grid-cols-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Giá/đêm trung bình</p>
+                <p className="text-lg font-semibold text-slate-900">{formatCash(avgNightlyRate || 0)}</p>
+                <p className="text-xs text-slate-500">Trên các tin đã live</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Sức chứa TB</p>
+                <p className="text-lg font-semibold text-slate-900">{avgCapacity ? avgCapacity.toFixed(1) : "0"} khách</p>
+                <p className="text-xs text-slate-500">Mỗi lượt đặt</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Tin đang xử lý</p>
+                <p className="text-lg font-semibold text-slate-900">
+                  {myListings.filter((listing) => listing.status === "pending_review").length} tin
+                </p>
+                <p className="text-xs text-slate-500">Cần hoàn tất để tăng trưởng</p>
               </div>
             </div>
             <div className="mt-6 space-y-3">
-              {revenueByCity.length === 0 && (
-                <p className="text-sm text-slate-500">Add a listing to see a breakdown by city.</p>
+              {revenueInsights.topListings.length === 0 && (
+                <p className="text-sm text-slate-500">Thêm tin mới hoặc đợi tin được duyệt để xem biểu đồ doanh số.</p>
               )}
-              {revenueByCity.map((item) => {
-                const max = revenueByCity[0]?.value ?? 1;
+              {revenueInsights.topListings.map((item, index) => {
+                const max = revenueInsights.topListings[0]?.revenue ?? 1;
                 return (
-                  <div key={item.city}>
+                  <div key={item.id}>
                     <div className="flex items-center justify-between text-sm">
-                      <p className="font-semibold text-slate-800">{item.city}</p>
-                      <p className="text-slate-600">{formatCash(item.value)}</p>
+                      <p className="font-semibold text-slate-800">
+                        {index + 1}. {item.title}
+                      </p>
+                      <p className="text-slate-600">{formatCash(item.revenue)}</p>
                     </div>
                     <div className="mt-1 h-2 rounded-full bg-slate-100">
                       <div
                         className="h-2 rounded-full bg-gradient-to-r from-slate-500 via-slate-600 to-slate-800"
-                        style={{ width: `${(item.value / max) * 100}%` }}
+                        style={{ width: `${(item.revenue / max) * 100}%` }}
                       />
                     </div>
                   </div>
@@ -430,13 +550,22 @@ export default function HostWorkspace() {
                 type="button"
                 onClick={() => {
                   setFormFeedback(null);
-                  setIsFormOpen((prev) => !prev);
+                  if (isFormOpen && editingListing) {
+                    resetFormState();
+                  }
+                  setIsFormOpen((prev) => {
+                    const next = !prev;
+                    if (!next) {
+                      resetFormState();
+                    }
+                    return next;
+                  });
                 }}
                 disabled={!canCreateListing}
                 className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
                 <PlusCircle className="h-4 w-4" />
-                {isFormOpen ? "Close form" : "Add new listing"}
+                {isFormOpen ? "Đóng biểu mẫu" : editingListing ? "Chỉnh sửa tin" : "Add new listing"}
               </button>
             </div>
 
@@ -455,6 +584,12 @@ export default function HostWorkspace() {
                 }`}
               >
                 {formFeedback.text}
+              </div>
+            )}
+
+            {editingListing && isFormOpen && (
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700">
+                Đang chỉnh sửa: <span className="text-slate-900">{editingListing.title}</span>
               </div>
             )}
 
@@ -570,10 +705,7 @@ export default function HostWorkspace() {
                     type="button"
                     onClick={() => {
                       setIsFormOpen(false);
-                      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-                      blobUrlsRef.current = [];
-                      setListingForm({ title: "", city: "", nightlyRate: "", occupancy: "", images: [], imageInput: "" });
-                      setFieldErrors({ nightlyRate: "", occupancy: "" });
+                      resetFormState();
                     }}
                     className="inline-flex items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
                   >
@@ -587,14 +719,19 @@ export default function HostWorkspace() {
                     {isSubmitting && (
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                     )}
-                    Submit listing
+                    {editingListing ? "Cập nhật tin" : "Submit listing"}
                   </button>
                 </div>
               </form>
             )}
 
             <div className="mt-4 space-y-4">
-              {myListings.length === 0 && (
+              {isListingLoading && (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                  Loading your listings...
+                </div>
+              )}
+              {!isListingLoading && myListings.length === 0 && (
                 <p className="text-sm text-slate-500">
                   You do not have any listings yet. Start by clicking “Add new listing”.
                 </p>
@@ -616,6 +753,25 @@ export default function HostWorkspace() {
                           : "Rejected"}
                     </span>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEditListing(listing)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Chỉnh sửa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteListing(listing)}
+                      disabled={deleteLoadingId === listing.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deleteLoadingId === listing.id ? "Đang xóa..." : "Xóa tin"}
+                    </button>
+                  </div>
                   {listing.images.length > 0 && (
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {listing.images.map((img) => (
@@ -629,12 +785,12 @@ export default function HostWorkspace() {
                     </div>
                   )}
                   <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-3">
-                    <span>Nightly rate: {formatCash(listing.nightlyRate)}</span>
+                    <span>Nightly rate: {formatCash(listing.nightly_rate)}</span>
                     <span>Capacity: {listing.occupancy} guests</span>
-                    <span>Inquiries: {listing.inquiries}</span>
-                    <span>Monthly revenue: {formatCash(listing.monthlyRevenue)}</span>
-                    <span>Active tenants: {listing.activeTenants}</span>
-                    <span>Total bookings: {listing.bookingsCount}</span>
+                    <span>Inquiries: {listing.inquiries ?? 0}</span>
+                    <span>Monthly revenue: {formatCash(listing.monthlyRevenue ?? 0)}</span>
+                    <span>Active tenants: {listing.activeTenants ?? 0}</span>
+                    <span>Total bookings: {listing.bookingsCount ?? 0}</span>
                   </div>
                 </div>
               ))}

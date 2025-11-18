@@ -118,7 +118,7 @@ export default function AdminListings() {
               onClick={() => setTab("applications")}
               className={`rounded-full px-5 py-2 text-sm font-semibold ${tab === "applications" ? "bg-slate-900 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
             >
-              Đơn host ({filteredApplications.length})
+              Đơn đăng ký ({filteredApplications.length})
             </button>
           </div>
         </header>

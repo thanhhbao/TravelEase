@@ -17,7 +17,10 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\Admin\UserRoleController;
+use App\Http\Controllers\Admin\ListingApprovalController;
 use App\Http\Controllers\HostStatusController;
+use App\Http\Controllers\HostListingController;
+use App\Http\Controllers\ListingController;
 
 // Lấy user bằng Bearer token (Sanctum PAT)
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
@@ -43,7 +46,28 @@ Route::middleware('auth:sanctum')->post('/user/delete', [UserAccountDeletionCont
 Route::middleware('auth:sanctum')->post('/user/host/request', [HostStatusController::class, 'request'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+Route::middleware('auth:sanctum')->get('/host/listings', [HostListingController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->post('/host/listings', [HostListingController::class, 'store'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->put('/host/listings/{listing}', [HostListingController::class, 'update'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware('auth:sanctum')->delete('/host/listings/{listing}', [HostListingController::class, 'destroy'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 Route::middleware(['auth:sanctum', 'admin'])->post('/admin/users/{user}/role', [UserRoleController::class, 'update'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/listings', [ListingApprovalController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->post('/admin/listings/{listing}/status', [ListingApprovalController::class, 'update'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::get('/listings', [ListingController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ===== Bookings =====
