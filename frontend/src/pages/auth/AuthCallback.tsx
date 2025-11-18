@@ -12,13 +12,15 @@ export default function AuthCallback() {
 
   useEffect(() => {
     const handleCallback = async () => {
-      const token = searchParams.get("token");
-      const login = searchParams.get("login");
-      const error = searchParams.get("error");
+  const token = searchParams.get("token");
+  const error = searchParams.get("error");
+  const reason = searchParams.get("reason");
 
       if (error) {
-        console.error("Google auth failed:", error);
-        navigate("/login?error=google_auth_failed");
+        console.error("Google auth failed:", error, reason);
+        // Forward error and optional reason to login page for dev debugging
+        const reasonParam = reason ? `&reason=${encodeURIComponent(reason)}` : "";
+        navigate(`/login?error=google_auth_failed${reasonParam}`);
         return;
       }
 

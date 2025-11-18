@@ -49,9 +49,15 @@ class GoogleAuthController extends Controller
 
         } catch (\Throwable $e) {
             report($e);
-            // Redirect to frontend with error
+            // Redirect to frontend with error (include reason only in debug/local)
             $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
-            return redirect()->away($frontendUrl . '/auth/callback?error=google_auth_failed');
+            $query = '?error=google_auth_failed';
+            // Only append exception message when app is in debug to avoid leaking details in production
+            if (config('app.debug')) {
+                $reason = urlencode($e->getMessage());
+                $query .= '&reason=' . $reason;
+            }
+            return redirect()->away($frontendUrl . '/auth/callback' . $query);
         }
     }
 }
