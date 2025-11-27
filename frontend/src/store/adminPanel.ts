@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { useAuthStore, type HostStatus, type UserRole } from "./auth";
-import { assignUserRole as assignUserRoleApi, requestHostAccess as requestHostAccessApi } from "../lib/api";
+import { assignUserRole as assignUserRoleApi, requestHostAccess as requestHostAccessApi, updateHostApplicationStatus, fetchAdminHostApplications, fetchAdminActivity, fetchAdminBookings, updateAdminBookingStatus } from "../lib/api";
 
 const createId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -11,6 +11,52 @@ const createId = () => {
 };
 
 const uniqueRoles = (roles: UserRole[]) => Array.from(new Set(roles));
+
+export type BookingStatus = "pending" | "confirmed" | "cancelled" | "expired";
+export type PaymentStatus = "pending" | "paid" | "refunded";
+export type BookingType = "hotel" | "flight" | "unknown";
+
+export type Booking = {
+  id: number;
+  user_id: number;
+  hotel_id?: number;
+  room_id?: number;
+  flight_id?: number;
+  check_in?: string; // ISO date string
+  check_out?: string; // ISO date string
+  guests: number;
+  total_price: number;
+  currency: string;
+  status: BookingStatus;
+  payment_status: PaymentStatus;
+  created_at: string;
+  updated_at: string;
+  type: BookingType;
+  // Eager-loaded relationships
+  user?: ManagedUser;
+  hotel?: PropertyListing;
+  room?: RoomDetails;
+  flight?: FlightDetails;
+};
+
+export type RoomDetails = {
+  id: number;
+  name: string;
+  price: number;
+  capacity: number;
+};
+
+export type FlightDetails = {
+  id: number;
+  airline: string;
+  flight_number: string;
+  from_airport: string;
+  to_airport: string;
+  departure_time: string;
+  arrival_time: string;
+  price: number;
+  class: string;
+};
 
 export type ListingStatus = "pending_review" | "published" | "rejected";
 export type HostApplicationDecision = "pending" | "approved" | "rejected";
@@ -92,9 +138,10 @@ type AdminPanelState = {
   propertyListings: PropertyListing[];
   hostApplications: HostApplication[];
   activityLog: ActivityLogEntry[];
+  adminBookings: Booking[];
   assignUserRole: (userId: number, role: UserRole, options?: { hostStatus?: HostStatus }) => Promise<void>;
   updateListingStatus: (listingId: string, status: ListingStatus) => void;
-  updateHostApplication: (id: string, status: HostApplicationDecision) => Promise<void>;
+  updateHostApplication: (id: string, status: "approved" | "rejected") => Promise<void>;
   registerHostApplication: (payload: HostApplicationPayload) => Promise<HostApplicationResult>;
   createListing: (payload: {
     title: string;
@@ -105,6 +152,10 @@ type AdminPanelState = {
     hostName: string;
     images?: string[];
   }) => Promise<PropertyListing>;
+  loadHostApplications: (params?: {status?: string; search?: string; page?: number; per_page?: number}) => Promise<void>;
+  loadActivityLogs: (params?: { page?: number; per_page?: number }) => Promise<void>;
+  loadAdminBookings: (params?: { status?: string; user_id?: number; hotel_id?: number; type?: string; page?: number; per_page?: number }) => Promise<void>;
+  updateBookingStatus: (id: number, status: BookingStatus) => Promise<void>;
 };
 
 const initialManagedUsers: ManagedUser[] = [
@@ -315,12 +366,16 @@ export const useAdminPanelStore = create<AdminPanelState>()(
       propertyListings: initialListings,
       hostApplications: initialHostApplications,
       activityLog: initialActivity,
+      adminBookings: [],
 
       assignUserRole: async (userId, role, options) => {
-        await assignUserRoleApi(userId, {
-          role,
-          host_status: options?.hostStatus ?? null,
-        });
+        const payload: { role: UserRole; host_status?: HostStatus | null } = { role };
+
+        if (role === "host") {
+          payload.host_status = options?.hostStatus === undefined ? null : options.hostStatus;
+        }
+
+        await assignUserRoleApi(userId, payload);
 
         set((state) => {
           const nextUsers = state.managedUsers.map((user) => {
@@ -380,29 +435,29 @@ export const useAdminPanelStore = create<AdminPanelState>()(
       },
 
       updateHostApplication: async (id, status) => {
-        const target = get().hostApplications.find((app) => app.id === id);
-
-        if (target) {
-          if (status === "approved") {
-            await assignUserRoleApi(target.userId, { role: "host", host_status: "approved" });
-          } else if (status === "rejected") {
-            await assignUserRoleApi(target.userId, { role: "traveler", host_status: "rejected" });
-          }
+        // call admin API to update application status
+        try {
+          await updateHostApplicationStatus(id, { status });
+        } catch (err) {
+          console.error('Failed to update application status', err);
+          throw err;
         }
+
+        const target = get().hostApplications.find((app) => app.id === id);
 
         set((state) => {
           const applications = state.hostApplications.map((app) =>
             app.id === id ? { ...app, status } : app
           );
+
           const nextUsers = target
             ? state.managedUsers.map((user) => {
                 if (user.id !== target.userId) return user;
-                const hostStatus: HostStatus =
-                  status === "approved" ? "approved" : status === "rejected" ? "rejected" : "pending";
+                const hostStatus: HostStatus = status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'pending';
                 const updatedUser: ManagedUser = {
                   ...user,
-                  role: status === "approved" ? "host" : user.role,
-                  roles: status === "approved" ? uniqueRoles([...user.roles, "host"]) : user.roles,
+                  role: status === 'approved' ? 'host' : user.role,
+                  roles: status === 'approved' ? uniqueRoles([...user.roles, 'host']) : user.roles,
                   hostStatus,
                 };
                 syncAuthUser(user.id, { role: updatedUser.role, roles: updatedUser.roles, hostStatus });
@@ -412,10 +467,10 @@ export const useAdminPanelStore = create<AdminPanelState>()(
 
           const entry: ActivityLogEntry = {
             id: createId(),
-            type: "host_application",
-            title: "Xử lý đơn đăng ký host",
-                description: `Đơn của ${target?.userName ?? "người dùng"} đã ${status}.`,
-            actor: useAuthStore.getState().user?.name ?? "Admin",
+            type: 'host_application',
+            title: 'Xử lý đơn đăng ký host',
+            description: `Đơn của ${target?.userName ?? 'người dùng'} đã ${status}.`,
+            actor: useAuthStore.getState().user?.name ?? 'Admin',
             createdAt: new Date().toISOString(),
           };
 
@@ -430,57 +485,61 @@ export const useAdminPanelStore = create<AdminPanelState>()(
 
       registerHostApplication: async (payload) => {
         const existingPending = get().hostApplications.find(
-          (app) => app.userId === payload.userId && app.status === "pending"
+          (app) => app.userId === payload.userId && app.status === 'pending'
         );
 
         if (existingPending) {
-          return { status: "already_pending", application: existingPending };
+          return { status: 'already_pending', application: existingPending };
         }
 
-        await requestHostAccessApi({
+        // Call backend to create application and set user host_status
+        const res = await requestHostAccessApi({
           phone: payload.phone,
           city: payload.city,
           experience: payload.experience,
           inventory: payload.inventory,
           message: payload.message,
-        });
+        }).then((r) => r.data);
 
-        let result: HostApplicationResult | null = null;
+        let application = null;
+        if (res?.application) {
+          application = res.application;
+        }
 
-        set((state) => {
-          const newApplication: HostApplication = {
+        // fallback to local creation if backend didn't return application
+        const newApplication =
+          application ?? {
             id: createId(),
-            status: "pending",
+            status: 'pending',
             submittedAt: new Date().toISOString(),
             ...payload,
           };
 
+        set((state) => {
           const existing = state.managedUsers.find((user) => user.id === payload.userId);
           const updatedUser: ManagedUser = existing
-            ? { ...existing, hostStatus: "pending" }
+            ? { ...existing, hostStatus: 'pending' }
             : {
                 id: payload.userId,
                 name: payload.userName,
                 email: payload.email,
-                role: "traveler",
-                roles: ["traveler"],
-                hostStatus: "pending",
+                role: 'traveler',
+                roles: ['traveler'],
+                hostStatus: 'pending',
                 totalListings: 0,
-                lastActive: "Just applied",
+                lastActive: 'Just applied',
               };
 
           const users = existing
             ? state.managedUsers.map((user) => (user.id === updatedUser.id ? updatedUser : user))
             : [...state.managedUsers, updatedUser];
 
-          syncAuthUser(payload.userId, { hostStatus: "pending" });
-
-          result = { status: "created", application: newApplication };
+          syncAuthUser(payload.userId, { hostStatus: 'pending' });
 
           const entry: ActivityLogEntry = {
             id: createId(),
-            type: "host_application",
-            title: "Đơn đăng ký host mới",
+            type: 'host_application',
+            title: 'Đơn đăng ký host mới',
             description: `${payload.userName} gửi yêu cầu trở thành host.`,
             actor: payload.userName,
             createdAt: new Date().toISOString(),
@@ -494,7 +553,27 @@ export const useAdminPanelStore = create<AdminPanelState>()(
           };
         });
 
-        return result!;
+          return { status: application ? 'created' : 'created_local', application: newApplication } as HostApplicationResult;
+      },
+      loadHostApplications: async (params?: {status?: string; search?: string; page?: number; per_page?: number}) => {
+        try {
+          const p = params ?? { per_page: 20 };
+          const { data } = await fetchAdminHostApplications(p).then((r) => r.data);
+          const apps = data.data ?? data;
+          set((state) => ({ ...state, hostApplications: apps }));
+        } catch (err) {
+          console.error('Failed to load host applications', err);
+        }
+      },
+      loadActivityLogs: async (params?: { page?: number; per_page?: number }) => {
+        try {
+          const p = params ?? { per_page: 30 };
+          const { data } = await fetchAdminActivity(p).then((r) => r.data);
+          const items = data.data ?? data;
+          set((state) => ({ ...state, activityLog: items }));
+        } catch (err) {
+          console.error('Failed to load activity logs', err);
+        }
       },
       createListing: async ({ title, city, nightlyRate, occupancy, hostId, hostName, images }) => {
         const newListing: PropertyListing = {
@@ -533,6 +612,40 @@ export const useAdminPanelStore = create<AdminPanelState>()(
         });
 
         return newListing;
+      },
+      loadAdminBookings: async (params?: { status?: string; user_id?: number; hotel_id?: number; type?: string; page?: number; per_page?: number }) => {
+        try {
+          const p = params ?? { per_page: 10 };
+          const { data } = await fetchAdminBookings(p).then((r) => r.data);
+          const bookings = data.data ?? data;
+          set((state) => ({ ...state, adminBookings: bookings }));
+        } catch (err) {
+          console.error('Failed to load admin bookings', err);
+        }
+      },
+      updateBookingStatus: async (id: number, status: BookingStatus) => {
+        try {
+          await updateAdminBookingStatus(id, { status });
+          set((state) => ({
+            ...state,
+            adminBookings: state.adminBookings.map((booking) =>
+              booking.id === id ? { ...booking, status, updated_at: new Date().toISOString() } : booking
+            ),
+          }));
+          const actor = useAuthStore.getState().user?.name ?? "Admin";
+          const logEntry: ActivityLogEntry = {
+            id: createId(),
+            type: "listing", // or a new type for booking updates if desired
+            title: "Cập nhật trạng thái đặt phòng",
+            description: `Đặt phòng #${id} đã chuyển sang trạng thái ${status}.`,
+            actor,
+            createdAt: new Date().toISOString(),
+          };
+          set((state) => ({ ...state, activityLog: [logEntry, ...state.activityLog] }));
+        } catch (err) {
+          console.error('Failed to update booking status', err);
+          throw err;
+        }
       },
     }),
     {

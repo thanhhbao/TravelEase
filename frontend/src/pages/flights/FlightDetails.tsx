@@ -150,14 +150,14 @@ export default function FlightDetails() {
         <>
           {/* Hero with cover image */}
           <section className="relative">
-            {/* <div className="absolute inset-0">
+            <div className="absolute inset-0">
               <img
                 src="https://images.unsplash.com/photo-1490135900376-3f6b42e1b1dc?q=80&w=1600&auto=format&fit=crop"
                 alt="Airplane window"
                 className="w-full h-56 object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-br from-sky-900/50 via-sky-800/35 to-cyan-700/25" />
-            </div> */}
+            </div>
             <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-6 text-white">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur ring-2 ring-white/60 overflow-hidden grid place-items-center">

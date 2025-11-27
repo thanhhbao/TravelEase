@@ -212,6 +212,28 @@ export const updateListingStatus = (listingId: number | string, payload: { statu
 
 export const fetchPublicListings = () => api.get("/api/listings");
 
+export const fetchAdminUsers = (params?: { search?: string; role?: string; host_status?: string; page?: number; per_page?: number }) =>
+  api.get("/api/admin/users", { params });
+
+export const fetchAdminHostApplications = (params?: { status?: string; search?: string; page?: number; per_page?: number }) =>
+  api.get("/api/admin/host-applications", { params });
+
+export const updateHostApplicationStatus = (applicationId: number | string, payload: { status: 'approved' | 'rejected' }) =>
+  api.post(`/api/admin/host-applications/${applicationId}/status`, payload);
+
+export const fetchAdminActivity = (params?: { page?: number; per_page?: number }) =>
+  api.get('/api/admin/activity', { params });
+
+export const fetchAdminAnalytics = () => api.get('/api/admin/analytics');
+
+export const fetchAdminBookings = (params?: { status?: string; user_id?: number; hotel_id?: number; type?: string; page?: number; per_page?: number }) =>
+  api.get("/api/admin/bookings", { params });
+
+export const fetchAdminBookingDetails = (id: number) => api.get(`/api/admin/bookings/${id}`);
+
+export const updateAdminBookingStatus = (id: number, payload: { status: string }) =>
+  api.put(`/api/admin/bookings/${id}/status`, payload);
+
 /* =====================================================
  * ================ GOOGLE AUTH =======================
  * ===================================================== */

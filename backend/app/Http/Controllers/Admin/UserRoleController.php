@@ -32,6 +32,16 @@ class UserRoleController extends Controller
             'host_status' => $hostStatus,
         ])->save();
 
+        // record activity
+        \App\Models\ActivityLog::create([
+            'type' => 'role_update',
+            'title' => 'User role updated',
+            'description' => "User {$user->email} role set to {$role} (host_status={$hostStatus})",
+            'actor' => $request->user()?->name ?? 'system',
+            'meta' => json_encode(['user_id' => $user->id, 'role' => $role, 'host_status' => $hostStatus]),
+            'created_at' => now(),
+        ]);
+
         return response()->json([
             'message' => 'Role updated successfully.',
             'user' => $user->fresh(),
