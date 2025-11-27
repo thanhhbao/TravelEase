@@ -182,6 +182,36 @@ export const assignUserRole = (
   payload: { role: string; host_status?: string | null }
 ) => api.post(`/api/admin/users/${userId}/role`, payload);
 
+export const fetchHostListings = () => api.get("/api/host/listings");
+export const createHostListing = (payload: {
+  title: string;
+  city: string;
+  nightly_rate: number;
+  occupancy: number;
+  images: string[];
+  description?: string;
+}) => api.post("/api/host/listings", payload);
+export const updateHostListing = (
+  id: number,
+  payload: {
+    title?: string;
+    city?: string;
+    nightly_rate?: number;
+    occupancy?: number;
+    images?: string[];
+    description?: string | null;
+  }
+) => api.put(`/api/host/listings/${id}`, payload);
+export const deleteHostListing = (id: number) => api.delete(`/api/host/listings/${id}`);
+
+export const fetchAdminListings = (params?: { status?: string; search?: string; page?: number }) =>
+  api.get("/api/admin/listings", { params });
+
+export const updateListingStatus = (listingId: number | string, payload: { status: string }) =>
+  api.post(`/api/admin/listings/${listingId}/status`, payload);
+
+export const fetchPublicListings = () => api.get("/api/listings");
+
 /* =====================================================
  * ================ GOOGLE AUTH =======================
  * ===================================================== */

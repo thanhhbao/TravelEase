@@ -66,6 +66,14 @@ type BookingResult = {
   room?: { name?: string | null };
 };
 
+const initialTravelerState = {
+  email: "",
+  phone: "",
+  firstName: "",
+  lastName: "",
+  address: "",
+};
+
 export default function Checkout() {
   const { state } = useLocation() as { state: LocationState | null };
   const data = useMemo<LocationState>(
@@ -104,6 +112,8 @@ export default function Checkout() {
   const [bookingResult, setBookingResult] = useState<unknown | null>(null);
   const [bookingMessage, setBookingMessage] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [travelerInfo, setTravelerInfo] = useState(initialTravelerState);
+  const [travelerErrors, setTravelerErrors] = useState<Partial<typeof initialTravelerState>>({});
 
   const { user, loading: authLoading } = useAuth();
   const bookingSummary = useMemo(
@@ -345,8 +355,21 @@ export default function Checkout() {
               {/* Contact Detail */}
               <Section title="Contact Detail">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <Input label="Email" placeholder="input email" type="email" />
-                  <Input label="Phone Number" placeholder="input phone number" />
+                  <Input
+                    label="Email"
+                    placeholder="input email"
+                    type="email"
+                    value={travelerInfo.email}
+                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, email: val }))}
+                    error={travelerErrors.email}
+                  />
+                  <Input
+                    label="Phone Number"
+                    placeholder="input phone number"
+                    value={travelerInfo.phone}
+                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, phone: val }))}
+                    error={travelerErrors.phone}
+                  />
                 </div>
                 <label className="mt-3 flex items-center gap-2 text-slate-700">
                   <input
@@ -364,10 +387,29 @@ export default function Checkout() {
               {/* Traveler Detail */}
               <Section title="Traveler Detail">
                 <div className="grid md:grid-cols-2 gap-4">
-                  <Input label="First Name" placeholder="input first name" />
-                  <Input label="Last Name" placeholder="input last name" />
+                  <Input
+                    label="First Name"
+                    placeholder="input first name"
+                    value={travelerInfo.firstName}
+                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, firstName: val }))}
+                    error={travelerErrors.firstName}
+                  />
+                  <Input
+                    label="Last Name"
+                    placeholder="input last name"
+                    value={travelerInfo.lastName}
+                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, lastName: val }))}
+                    error={travelerErrors.lastName}
+                  />
                 </div>
-                <Input label="Address" placeholder="input your address" className="mt-4" />
+                <Input
+                  label="Address"
+                  placeholder="input your address"
+                  className="mt-4"
+                  value={travelerInfo.address}
+                  onChange={(val) => setTravelerInfo((prev) => ({ ...prev, address: val }))}
+                  error={travelerErrors.address}
+                />
               </Section>
 
               {/* Promo code */}
@@ -385,7 +427,21 @@ export default function Checkout() {
 
               <div className="pt-2">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => {
+                    const nextErrors: Partial<typeof initialTravelerState> = {};
+                    if (!travelerInfo.email.trim()) nextErrors.email = "Email is required";
+                    if (!travelerInfo.phone.trim()) nextErrors.phone = "Phone number is required";
+                    if (!travelerInfo.firstName.trim())
+                      nextErrors.firstName = "First name is required";
+                    if (!travelerInfo.lastName.trim()) nextErrors.lastName = "Last name is required";
+                    if (!travelerInfo.address.trim())
+                      nextErrors.address = "Address is required";
+
+                    setTravelerErrors(nextErrors);
+                    if (Object.keys(nextErrors).length === 0) {
+                      setStep(2);
+                    }
+                  }}
                   className="w-full md:w-48 bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition"
                 >
                   Next
@@ -551,7 +607,7 @@ export default function Checkout() {
 
               <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
                 <Link
-                  to="/dashboard/bookings"
+                  to="/my/bookings"
                   className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                 >
                   View my bookings
@@ -867,6 +923,9 @@ function Input({
   className = "",
   variant = "default",
   inputClassName = "",
+  value,
+  onChange,
+  error,
 }: {
   label: string;
   placeholder?: string;
@@ -874,6 +933,9 @@ function Input({
   className?: string;
   variant?: "default" | "glass";
   inputClassName?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  error?: string;
 }) {
   return (
     <div className={`flex flex-col ${className}`}>
@@ -881,12 +943,15 @@ function Input({
       <input
         type={type}
         placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
         className={`w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 ${
           variant === "glass"
             ? "bg-white/40 backdrop-blur-md border-white/30"
             : "bg-white"
-        } ${inputClassName}`}
+        } ${inputClassName} ${error ? "border-rose-300" : ""}`}
       />
+      {error && <span className="mt-1 text-xs text-rose-600">{error}</span>}
     </div>
   );
 }

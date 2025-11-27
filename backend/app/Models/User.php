@@ -9,6 +9,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Laravel\Sanctum\HasApiTokens; // <- quan trọng
+use App\Models\Listing;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -90,6 +91,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->buildCapabilitiesFromPermissions(
             $this->buildPermissions($this->roles, $this->host_status)
         );
+    }
+
+    public function listings()
+    {
+        return $this->hasMany(Listing::class);
     }
 
     /**
