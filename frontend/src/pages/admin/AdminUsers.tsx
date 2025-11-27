@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Search, Users, Building2 } from "lucide-react";
-import { useAdminPanelStore } from "../../store/adminPanel";
+import { fetchAdminUsers } from "../../lib/api";
 import { type UserRole } from "../../store/auth";
 
 const roleOptions: { label: string; value: "all" | UserRole }[] = [
@@ -26,24 +26,55 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export default function AdminUsers() {
-  const { managedUsers } = useAdminPanelStore();
+  // local state drives server-backed listing
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | UserRole>("all");
   const [hostFilter, setHostFilter] = useState<"all" | "not_registered" | "pending" | "approved" | "rejected">("all");
-  const [visibleCount, setVisibleCount] = useState(8);
+  const [perPage] = useState(12);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [managedUsers, setManagedUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = useMemo(() => {
-    return managedUsers.filter((user) => {
-      const matchSearch =
-        user.name.toLowerCase().includes(search.toLowerCase()) ||
-        user.email.toLowerCase().includes(search.toLowerCase());
-      const matchRole = roleFilter === "all" ? true : user.role === roleFilter;
-      const matchHost = hostFilter === "all" ? true : user.hostStatus === hostFilter;
-      return matchSearch && matchRole && matchHost;
-    });
-  }, [managedUsers, search, roleFilter, hostFilter]);
+  const loadUsers = async (p = page) => {
+    setLoading(true);
+    try {
+      const params: any = { per_page: perPage, page: p };
+      if (search) params.search = search;
+      if (roleFilter !== "all") params.role = roleFilter;
+      if (hostFilter !== "all") params.host_status = hostFilter;
+      const { data } = await fetchAdminUsers(params).then((r) => r.data);
+      // paginator returns data and pagination keys
+      setManagedUsers(data.data ?? data);
+      setTotal(data.total ?? data.meta?.total ?? 0);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const visibleUsers = filtered.slice(0, visibleCount);
+  const filtered = managedUsers.filter((user) => {
+    // server already filtered; this local filter is defensive
+    const matchSearch =
+      user.name.toLowerCase().includes(search.toLowerCase()) ||
+      user.email.toLowerCase().includes(search.toLowerCase());
+    const matchRole = roleFilter === "all" ? true : user.role === roleFilter;
+    const matchHost = hostFilter === "all" ? true : user.host_status === hostFilter || user.hostStatus === hostFilter;
+    return matchSearch && matchRole && matchHost;
+  });
+
+  const visibleUsers = filtered;
+
+  // reset page when query filters change
+  useEffect(() => {
+    setPage(1);
+    loadUsers(1);
+  }, [search, roleFilter, hostFilter]);
+
+  useEffect(() => {
+    loadUsers(page);
+  }, [page]);
 
   return (
     <div className="bg-slate-50 min-h-screen p-6 sm:p-10">
@@ -67,10 +98,7 @@ export default function AdminUsers() {
             </div>
             <select
               value={roleFilter}
-              onChange={(e) => {
-                setRoleFilter(e.target.value as "all" | UserRole);
-                setVisibleCount(8);
-              }}
+              onChange={(e) => setRoleFilter(e.target.value as "all" | UserRole)}
               className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600"
             >
               {roleOptions.map((option) => (
@@ -81,10 +109,7 @@ export default function AdminUsers() {
             </select>
             <select
               value={hostFilter}
-              onChange={(e) => {
-                setHostFilter(e.target.value as typeof hostFilter);
-                setVisibleCount(8);
-              }}
+              onChange={(e) => setHostFilter(e.target.value as typeof hostFilter)}
               className="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-600"
             >
               {hostStatusOptions.map((option) => (
@@ -141,24 +166,31 @@ export default function AdminUsers() {
                 </div>
               </div>
               <div className="mt-4 grid gap-2 text-xs text-slate-500 sm:grid-cols-3">
-                <span>Tổng tin đăng: {user.totalListings}</span>
+                <span>Tổng tin đăng: {user.listings_count ?? user.totalListings ?? 0}</span>
                 <span>Pending payout: {user.pendingPayout ? formatCurrency(user.pendingPayout) : "—"}</span>
-                <span>Last active: {user.lastActive}</span>
+                <span>Last active: {user.lastActive ?? (new Date(user.updated_at || user.created_at).toLocaleString())}</span>
               </div>
             </div>
           ))}
         </section>
 
-        {visibleCount < filtered.length && (
-          <div className="flex justify-center">
-            <button
-              onClick={() => setVisibleCount((count) => count + 6)}
-              className="rounded-full border border-slate-200 px-6 py-2 text-sm font-semibold text-slate-700 hover:bg-white"
-            >
-              Xem thêm
-            </button>
-          </div>
-        )}
+        <div className="flex items-center justify-center gap-3 mt-6">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading}
+            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <div className="text-sm text-slate-500">Page {page} • {total} users</div>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page * perPage >= (total || 0) || loading}
+            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

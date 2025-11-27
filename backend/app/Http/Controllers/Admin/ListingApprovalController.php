@@ -43,6 +43,16 @@ class ListingApprovalController extends Controller
             'status' => $data['status'],
         ]);
 
+        // log the listing status update
+        \App\Models\ActivityLog::create([
+            'type' => 'listing',
+            'title' => 'Listing status changed',
+            'description' => "Listing {$listing->id} status set to {$data['status']}",
+            'actor' => $request->user()?->name ?? 'system',
+            'meta' => json_encode(['listing_id' => $listing->id, 'status' => $data['status']]),
+            'created_at' => now(),
+        ]);
+
         return response()->json([
             'message' => 'Listing status updated.',
             'listing' => $listing->fresh('user'),

@@ -15,21 +15,26 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Admin User',
-            'email' => 'admin@travelease.com',
-            'password' => bcrypt('password'),
-            'role' => 'admin',
-            'host_status' => 'approved',
-        ]);
+        // Use updateOrCreate so running db:seed multiple times doesn't fail
+        \App\Models\User::updateOrCreate(
+            ['email' => 'admin@travelease.com'],
+            [
+                'name' => 'Admin User',
+                'password' => bcrypt('password'),
+                'role' => 'admin',
+                'host_status' => 'approved',
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Test Traveler',
-            'email' => 'test@example.com',
-            'password' => bcrypt('password'),
-            'role' => 'traveler',
-            'host_status' => 'not_registered',
-        ]);
+        \App\Models\User::updateOrCreate(
+            ['email' => 'test@example.com'],
+            [
+                'name' => 'Test Traveler',
+                'password' => bcrypt('password'),
+                'role' => 'traveler',
+                'host_status' => 'not_registered',
+            ]
+        );
 
         $this->call([
             HotelSeeder::class,

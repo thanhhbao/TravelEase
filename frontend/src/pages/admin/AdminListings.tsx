@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -7,6 +7,7 @@ import {
   Search,
 } from "lucide-react";
 import { useAdminPanelStore, type ListingStatus } from "../../store/adminPanel";
+import { fetchAdminListings, updateListingStatus as updateListingStatusApi } from "../../lib/api";
 import { type HostApplicationDecision } from "../../store/adminPanel";
 
 const listingStatusOptions: { value: ListingStatus | "all"; label: string }[] = [
@@ -31,7 +32,17 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export default function AdminListings() {
-  const { propertyListings, hostApplications, updateListingStatus, updateHostApplication } = useAdminPanelStore();
+  const { propertyListings, hostApplications, updateHostApplication } = useAdminPanelStore();
+  const [listings, setListings] = useState<AdminListing[]>([]);
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(12);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const { loadHostApplications } = useAdminPanelStore();
+  
+  useEffect(() => {
+    loadHostApplications?.();
+  }, []);
   const [tab, setTab] = useState<"listings" | "applications">("listings");
   const [listingStatusFilter, setListingStatusFilter] = useState<ListingStatus | "all">("pending_review");
   const [applicationFilter, setApplicationFilter] = useState<HostApplicationDecision | "all">("pending");
@@ -39,7 +50,9 @@ export default function AdminListings() {
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const filteredListings = useMemo(() => {
-    return propertyListings.filter((listing) => {
+    // propertyListings is fallback/mock; prefer server listings when available
+    const source = listings.length ? listings : propertyListings;
+    return source.filter((listing) => {
       const matchStatus = listingStatusFilter === "all" ? true : listing.status === listingStatusFilter;
       const matchSearch =
         listing.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -52,16 +65,34 @@ export default function AdminListings() {
     return hostApplications.filter((application) => {
       const matchStatus = applicationFilter === "all" ? true : application.status === applicationFilter;
       const matchSearch =
-        application.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        application.email.toLowerCase().includes(searchTerm.toLowerCase());
+        (application.userName && application.userName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (application.email && application.email.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchStatus && matchSearch;
     });
   }, [hostApplications, applicationFilter, searchTerm]);
 
+  const loadListings = async (p = page) => {
+    setLoading(true);
+    try {
+      const { data } = await fetchAdminListings({ status: listingStatusFilter === 'all' ? undefined : listingStatusFilter, page: p, per_page: perPage }).then((r) => r.data);
+      const dataRows = data.data ?? data;
+      setListings(dataRows);
+      setTotal(data.total ?? 0);
+    } catch (err) {
+      console.error('Failed to load listings', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUpdateListing = async (listingId: string, status: ListingStatus) => {
     setProcessingId(listingId);
     try {
-      updateListingStatus(listingId, status);
+      await updateListingStatusApi(listingId, { status });
+      // refresh
+      await loadListings(page);
+    } catch (err) {
+      console.error('Failed to update listing', err);
     } finally {
       setProcessingId(null);
     }
@@ -75,6 +106,14 @@ export default function AdminListings() {
       setProcessingId(null);
     }
   };
+
+  useEffect(() => {
+    loadListings(1);
+  }, [listingStatusFilter]);
+
+  useEffect(() => {
+    loadListings(page);
+  }, [page]);
 
   return (
     <div className="bg-slate-50 min-h-screen p-6 sm:p-10">
@@ -269,3 +308,4 @@ export default function AdminListings() {
     </div>
   );
 }
+

@@ -17,6 +17,7 @@ use App\Http\Controllers\ContactController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\Admin\UserRoleController;
+use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Admin\ListingApprovalController;
 use App\Http\Controllers\HostStatusController;
 use App\Http\Controllers\HostListingController;
@@ -64,10 +65,34 @@ Route::middleware(['auth:sanctum', 'admin'])->post('/admin/users/{user}/role', [
 Route::middleware(['auth:sanctum', 'admin'])->get('/admin/listings', [ListingApprovalController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/users', [UserManagementController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 Route::middleware(['auth:sanctum', 'admin'])->post('/admin/listings/{listing}/status', [ListingApprovalController::class, 'update'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/host-applications', [\App\Http\Controllers\Admin\HostApplicationController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->post('/admin/host-applications/{application}/status', [\App\Http\Controllers\Admin\HostApplicationController::class, 'update'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/activity', [\App\Http\Controllers\Admin\ActivityLogController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/analytics', [\App\Http\Controllers\Admin\AdminAnalyticsController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
 Route::get('/listings', [ListingController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/bookings', [\App\Http\Controllers\Admin\AdminBookingController::class, 'index'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->get('/admin/bookings/{id}', [\App\Http\Controllers\Admin\AdminBookingController::class, 'show'])
+    ->withoutMiddleware([VerifyCsrfToken::class]);
+
+Route::middleware(['auth:sanctum', 'admin'])->put('/admin/bookings/{id}/status', [\App\Http\Controllers\Admin\AdminBookingController::class, 'updateStatus'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 // ===== Bookings =====

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Shield,
@@ -19,8 +19,10 @@ import {
   type ListingStatus,
   type ManagedUser,
   type HostApplication,
+  type Booking,
+  type BookingStatus,
 } from "../../store/adminPanel";
-import { fetchAdminListings, updateListingStatus as updateListingStatusApi } from "../../lib/api";
+import { fetchAdminListings, updateListingStatus as updateListingStatusApi, fetchAdminAnalytics } from "../../lib/api";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("vi-VN", {
@@ -29,40 +31,12 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-type AdminListing = {
-  id: number;
-  title: string;
-  city: string;
-  nightly_rate: number;
-  occupancy: number;
-  status: ListingStatus;
-  images: string[];
-  created_at: string;
-  user?: {
-    id: number;
-    name: string;
-    email: string;
-  };
-};
-
-type RevenueRange = "monthly" | "quarterly" | "yearly";
-
-type ListingDepositInsight = {
-  id: string | number;
-  title: string;
-  city: string;
-  hostId?: number;
-  hostName: string;
-  monthlyRevenue: number;
-  deposit: number;
-  bookingsCount: number;
-};
-
-type HostDepositInsight = {
-  hostKey: string;
-  hostName: string;
-  totalDeposit: number;
-  listings: ListingDepositInsight[];
+type AdminAnalytics = {
+  totalRoomRevenue: number;
+  totalTicketRevenue: number;
+  totalRoomOrders: number;
+  totalTicketOrders: number;
+  totalRevenue: number;
 };
 
 type RevenueSeriesPoint = {
@@ -83,26 +57,26 @@ type RevenueHistoryPoint = {
   ticketOrders: number;
 };
 
-const roleOptions: { value: UserRole; label: string }[] = [
-  { value: "admin", label: "Admin" },
-  { value: "host", label: "Người đăng tin" },
-  { value: "traveler", label: "Người dùng" },
-];
-
-const statusStyles: Record<ListingStatus, string> = {
-  pending_review: "bg-amber-100 text-amber-700",
-  published: "bg-emerald-100 text-emerald-700",
-  rejected: "bg-rose-100 text-rose-700",
+type AdminListing = {
+  id: number;
+  title: string;
+  city: string;
+  hostId: string;
+  hostName?: string;
+  status: ListingStatus;
+  nightly_rate: number;
+  occupancy: number;
+  bookingsCount?: number;
+  monthlyRevenue?: number;
+  created_at: string;
+  images: string[];
+  user?: { name: string; email: string };
 };
 
-const hostApplicationStyles: Record<HostApplicationDecision, string> = {
-  pending: "bg-blue-100 text-blue-700",
-  approved: "bg-emerald-100 text-emerald-700",
-  rejected: "bg-rose-100 text-rose-700",
-};
+type RevenueRange = "monthly" | "quarterly" | "yearly";
 
-export default function AdminDashboard() {
-  const { user } = useAuthStore();
+const AdminDashboard = () => {
+  const user = useAuthStore((state) => state.user);
   const {
     managedUsers,
     propertyListings,
@@ -110,66 +84,79 @@ export default function AdminDashboard() {
     activityLog,
     assignUserRole,
     updateHostApplication,
+    loadHostApplications,
+    loadActivityLogs,
+    loadAdminBookings,
+    updateBookingStatus,
+    adminBookings,
   } = useAdminPanelStore();
-  const [roleUpdatingId, setRoleUpdatingId] = useState<number | null>(null);
+  const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
   const [processingApplicationId, setProcessingApplicationId] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [applicationStatusFilter, setApplicationStatusFilter] = useState<HostApplicationDecision | "all">("pending");
   const [listingStatusFilter, setListingStatusFilter] = useState<ListingStatus | "all">("pending_review");
   const [previewListing, setPreviewListing] = useState<AdminListing | null>(null);
   const [listingSnapshot, setListingSnapshot] = useState<AdminListing[]>([]);
-  const [isListingSnapshotLoading, setIsListingSnapshotLoading] = useState(false);
   const [revenueRange, setRevenueRange] = useState<RevenueRange>("monthly");
   const [chartView, setChartView] = useState<RevenueRange | null>(null);
   const [updatingListingId, setUpdatingListingId] = useState<number | null>(null);
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [autoPayoutEnabled, setAutoPayoutEnabled] = useState(false);
-  const [payoutStatus, setPayoutStatus] = useState<Record<string, "pending" | "processing" | "paid">>({});
+  const [previewBooking, setPreviewBooking] = useState<Booking | null>(null);
+
   const rangeLabelMap: Record<RevenueRange, string> = {
-    monthly: "tháng",
-    quarterly: "quý",
-    yearly: "năm",
+    monthly: "Tháng",
+    quarterly: "Quý",
+    yearly: "Năm",
   };
   const revenueRanges: RevenueRange[] = ["monthly", "quarterly", "yearly"];
 
-  const loadAdminListings = async () => {
+  const statusStyles: Record<ListingStatus, string> = {
+    pending_review: "bg-amber-50 text-amber-700",
+    published: "bg-emerald-50 text-emerald-700",
+    rejected: "bg-rose-50 text-rose-700",
+  };
+
+  const loadAdminListings = useCallback(async () => {
     try {
-      setIsListingSnapshotLoading(true);
       const { data } = await fetchAdminListings({ status: "all" });
       setListingSnapshot(data?.data ?? data ?? []);
     } catch (error) {
       console.error("Failed to load admin listings", error);
-    } finally {
-      setIsListingSnapshotLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadAdminListings();
-  }, []);
+    fetchAdminAnalytics()
+      .then((res) => {
+        setAnalytics({
+          ...res.data,
+          totalRoomRevenue: parseFloat(res.data.totalRoomRevenue),
+          totalTicketRevenue: parseFloat(res.data.totalTicketRevenue),
+        });
+      })
+      .catch((err) => console.error("Failed to load analytics", err));
+
+    loadHostApplications?.();
+    loadActivityLogs?.();
+    loadAdminBookings?.();
+  }, [loadActivityLogs, loadHostApplications, loadAdminListings]);
 
   const analyticsSnapshot = useMemo(() => {
+    const currentAnalytics = analytics ?? { totalRoomRevenue: 0, totalTicketRevenue: 0, totalRoomOrders: 0, totalTicketOrders: 0, totalRevenue: 0 };
+
     const publishedListings = propertyListings.filter((listing) => listing.status === "published");
-    const totalBookingOrders = publishedListings.reduce((acc, listing) => acc + (listing.bookingsCount ?? 0), 0);
+
     const assumedStayLength = 2.4; // trung bình 2.4 đêm/đơn dùng để quy đổi doanh thu
-    const totalBookingRevenue = publishedListings.reduce(
-      (acc, listing) => acc + (listing.bookingsCount ?? 0) * listing.nightlyRate * assumedStayLength,
-      0
-    );
-    const monthlyBookingRevenue = publishedListings.reduce((acc, listing) => acc + (listing.monthlyRevenue ?? 0), 0);
-    const normalizedMonthlyBookingRevenue =
-      monthlyBookingRevenue || Math.round(totalBookingRevenue * 0.35) || 12_000_000;
+
     const avgGroupSize =
       publishedListings.length === 0
         ? 0
         : Math.round(
             publishedListings.reduce((acc, listing) => acc + (listing.occupancy ?? 0), 0) / publishedListings.length
           );
-
-    const estimatedTicketOrders = Math.round(totalBookingOrders * 0.85);
-    const averageTicketValue = 2_350_000;
-    const ticketRevenue = estimatedTicketOrders * averageTicketValue;
-    const monthlyTicketRevenue = Math.round(normalizedMonthlyBookingRevenue * 0.72);
 
     const cityDemand = publishedListings.reduce<Record<string, number>>((acc, listing) => {
       const key = listing.city ?? "Chưa rõ";
@@ -186,69 +173,18 @@ export default function AdminDashboard() {
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const msPerDay = 86_400_000;
     const daysToPayout = Math.max(0, Math.ceil((endOfMonth.getTime() - now.getTime()) / msPerDay));
-    const depositRate = 0.3;
-    const listingDeposits: ListingDepositInsight[] = publishedListings.map((listing) => {
-      const fallbackBookings = listing.bookingsCount && listing.bookingsCount > 0 ? listing.bookingsCount : 12;
-      const monthlyGross =
-        listing.monthlyRevenue ??
-        Math.round(listing.nightlyRate * fallbackBookings * Math.max(listing.occupancy ?? 1, 1));
-      const depositValue = Math.round(monthlyGross * depositRate);
-      const bookingsCount = listing.bookingsCount ?? fallbackBookings;
-      return {
-        id: listing.id,
-        title: listing.title,
-        city: listing.city,
-        hostId: listing.hostId,
-        hostName: listing.hostName ?? "Không rõ host",
-        monthlyRevenue: monthlyGross,
-        deposit: depositValue,
-        bookingsCount,
-      };
-    });
-
-    const hostBreakdownMap = new Map<string, HostDepositInsight>();
-    listingDeposits.forEach((item) => {
-      const hostKey = String(item.hostId ?? item.hostName);
-      if (!hostBreakdownMap.has(hostKey)) {
-        hostBreakdownMap.set(hostKey, {
-          hostKey,
-          hostName: item.hostName,
-          totalDeposit: 0,
-          listings: [],
-        });
-      }
-      const bucket = hostBreakdownMap.get(hostKey)!;
-      bucket.totalDeposit += item.deposit;
-      bucket.listings.push(item);
-    });
-
-    const hostBreakdown = Array.from(hostBreakdownMap.values()).sort(
-      (a, b) => b.totalDeposit - a.totalDeposit
-    );
-    const depositBalance = listingDeposits.reduce((acc, item) => acc + item.deposit, 0);
-    const monthlyDepositVolume = listingDeposits.reduce((acc, item) => acc + item.monthlyRevenue, 0);
     const payoutProgress = Math.min(100, Math.round((now.getDate() / endOfMonth.getDate()) * 100));
 
-    const totalMonthsHistory = 36;
-    const averageRoomOrderValue =
-      totalBookingOrders > 0 ? normalizedMonthlyBookingRevenue / totalBookingOrders : normalizedMonthlyBookingRevenue;
-
+    const totalMonthsHistory = 1; // Chỉ tạo dữ liệu cho tháng hiện tại
     const monthHistory: RevenueHistoryPoint[] = Array.from({ length: totalMonthsHistory }, (_, index) => {
-      const monthsAgo = totalMonthsHistory - index - 1;
+      const monthsAgo = totalMonthsHistory - index - 1; // monthsAgo sẽ là 0 cho tháng hiện tại
       const date = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
-      const seasonality = 1 + 0.12 * Math.sin(((date.getMonth() + 1) / 12) * Math.PI * 2);
-      const trend = 0.82 + index * 0.012;
-      const randomizer = 1 + (index % 2 === 0 ? 0.035 : -0.025);
-      const bookings = Math.max(
-        0,
-        Math.round(normalizedMonthlyBookingRevenue * seasonality * trend * randomizer)
-      );
-      const tickets = Math.max(
-        0,
-        Math.round(monthlyTicketRevenue * (seasonality * 0.9 + 0.1) * trend * (2 - randomizer))
-      );
-      const roomOrders = Math.max(5, Math.round(bookings / Math.max(averageRoomOrderValue, 1)));
-      const ticketOrders = Math.max(3, Math.round(tickets / Math.max(averageTicketValue, 1)));
+
+      const bookings = currentAnalytics.totalRoomRevenue;
+      const tickets = currentAnalytics.totalTicketRevenue;
+      const roomOrders = currentAnalytics.totalRoomOrders;
+      const ticketOrders = currentAnalytics.totalTicketOrders;
+      
       return {
         date,
         bookings,
@@ -268,33 +204,34 @@ export default function AdminDashboard() {
 
     const chunkSeries = (
       source: RevenueHistoryPoint[],
-      monthsPerChunk: number,
-      maxChunks: number,
       labelFormatter: (start: Date, end: Date) => string
     ): RevenueSeriesPoint[] => {
       const chunks: RevenueSeriesPoint[] = [];
-      for (let i = source.length; i > 0 && chunks.length < maxChunks; i -= monthsPerChunk) {
-        const chunk = source.slice(Math.max(0, i - monthsPerChunk), i);
-        if (chunk.length === 0) break;
-        const bookings = chunk.reduce((acc, item) => acc + item.bookings, 0);
-        const tickets = chunk.reduce((acc, item) => acc + item.tickets, 0);
-        const roomOrders = chunk.reduce((acc, item) => acc + item.roomOrders, 0);
-        const ticketOrders = chunk.reduce((acc, item) => acc + item.ticketOrders, 0);
-        const startDate = chunk[0].date;
-        const endDate = chunk[chunk.length - 1].date;
-        chunks.push({
-          label: labelFormatter(startDate, endDate),
-          bookings,
-          tickets,
-          total: bookings + tickets,
-          roomOrders,
-          ticketOrders,
-        });
-      }
-      return chunks.reverse();
+
+      if (source.length === 0) return [];
+
+      const lastEntry = source[source.length - 1];
+
+      const bookings = lastEntry.bookings;
+      const tickets = lastEntry.tickets;
+      const roomOrders = lastEntry.roomOrders;
+      const ticketOrders = lastEntry.ticketOrders;
+
+      const startDate = lastEntry.date;
+      const endDate = lastEntry.date;
+
+      chunks.push({
+        label: labelFormatter(startDate, endDate),
+        bookings,
+        tickets,
+        total: bookings + tickets,
+        roomOrders,
+        ticketOrders,
+      });
+      return chunks;
     };
 
-    const monthlySeries: RevenueSeriesPoint[] = monthHistory.slice(-4).map((entry) => ({
+    const monthlySeries: RevenueSeriesPoint[] = monthHistory.map((entry) => ({
       label: formatMonthLabel(entry.date),
       bookings: entry.bookings,
       tickets: entry.tickets,
@@ -302,13 +239,10 @@ export default function AdminDashboard() {
       roomOrders: entry.roomOrders,
       ticketOrders: entry.ticketOrders,
     }));
-    const quarterlySeries = chunkSeries(
-      monthHistory.slice(-12),
-      3,
-      4,
-      (_start, end) => formatQuarterLabel(end)
-    );
-    const yearlySeries = chunkSeries(monthHistory, 12, 3, (_start, end) => formatYearLabel(end));
+
+    const quarterlySeries: RevenueSeriesPoint[] = monthHistory.length > 0 ? chunkSeries(monthHistory, (_start, end) => formatQuarterLabel(end)) : [];
+
+    const yearlySeries: RevenueSeriesPoint[] = monthHistory.length > 0 ? chunkSeries(monthHistory, (_start, end) => formatYearLabel(end)) : [];
 
     return {
       webTraffic: {
@@ -321,29 +255,37 @@ export default function AdminDashboard() {
         avgGroupSize,
       },
       bookingRevenue: {
-        totalOrders: monthlySeries[monthlySeries.length - 1]?.roomOrders ?? totalBookingOrders,
-        revenue: Math.round(monthlySeries[monthlySeries.length - 1]?.bookings ?? totalBookingRevenue),
+        totalOrders: currentAnalytics.totalRoomOrders,
+        revenue: currentAnalytics.totalRoomRevenue,
         assumedStayLength,
       },
       ticketRevenue: {
-        totalTickets: monthlySeries[monthlySeries.length - 1]?.ticketOrders ?? estimatedTicketOrders,
-        revenue: monthlySeries[monthlySeries.length - 1]?.tickets ?? ticketRevenue,
+        totalTickets: currentAnalytics.totalTicketOrders,
+        revenue: currentAnalytics.totalTicketRevenue,
       },
       deposit: {
-        amount: depositBalance || Math.round(normalizedMonthlyBookingRevenue * depositRate),
+        amount: 0, // Không có dữ liệu tiền cọc thực tế từ API
         daysToPayout,
         dueDate: endOfMonth.toISOString(),
         progress: payoutProgress,
-        monthlyBookings: monthlyDepositVolume || normalizedMonthlyBookingRevenue,
-        hostBreakdown,
+        monthlyBookings: currentAnalytics.totalRoomOrders, // Sử dụng tổng số đơn đặt phòng thực tế
+        hostBreakdown: [], // Không có dữ liệu host breakdown thực tế từ API
       },
       revenueSeries: {
         monthly: monthlySeries,
         quarterly: quarterlySeries,
         yearly: yearlySeries,
       },
+      revenueTotals: {
+        bookings: currentAnalytics.totalRoomRevenue,
+        tickets: currentAnalytics.totalTicketRevenue,
+        total: currentAnalytics.totalRevenue,
+      },
+      chartMax: Math.max(...monthlySeries.map((item) => item.total), 1), // Using monthlySeries as a base for chartMax
+      detailSeries: chartView ? monthlySeries : [], // Simplified for now, will use actual revenueSeries[chartView] once available
+      detailChartMax: 1, // Will be calculated dynamically based on detailSeries if chartView is active
     };
-  }, [propertyListings]);
+  }, [propertyListings, analytics, chartView]);
 
   const topHosts = useMemo(() => {
     return managedUsers
@@ -368,21 +310,6 @@ export default function AdminDashboard() {
     return base.slice(0, 4);
   }, [listingSnapshot, listingStatusFilter]);
 
-  const activeRevenueSeries = analyticsSnapshot.revenueSeries[revenueRange];
-  const revenueTotals = activeRevenueSeries.reduce(
-    (acc, entry) => {
-      return {
-        bookings: acc.bookings + entry.bookings,
-        tickets: acc.tickets + entry.tickets,
-        total: acc.total + entry.total,
-      };
-    },
-    { bookings: 0, tickets: 0, total: 0 }
-  );
-  const chartMax = Math.max(...activeRevenueSeries.map((item) => item.total), 1);
-  const detailSeries = chartView ? analyticsSnapshot.revenueSeries[chartView] : [];
-  const detailChartMax = detailSeries.length > 0 ? Math.max(...detailSeries.map((item) => item.total), 1) : 1;
-
   const getTooltipStyle = (value: number, max: number) => {
     const percentage = max === 0 ? 0 : (value / max) * 100;
     const clamped = Math.max(0, Math.min(percentage, 100));
@@ -392,9 +319,13 @@ export default function AdminDashboard() {
   const handleRoleChange = async (managedUser: ManagedUser, nextRole: UserRole) => {
     if (nextRole === managedUser.role) return;
     setPanelError(null);
-    setRoleUpdatingId(managedUser.id);
+    setRoleUpdatingId(String(managedUser.id));
     try {
-      await assignUserRole(managedUser.id, nextRole);
+      await assignUserRole(
+        managedUser.id,
+        nextRole,
+        nextRole === "host" ? { hostStatus: "pending" } : undefined
+      );
     } catch (error) {
       console.error(error);
       setPanelError("Unable to update this member's role. Please try again.");
@@ -407,6 +338,7 @@ export default function AdminDashboard() {
     application: HostApplication,
     decision: HostApplicationDecision
   ) => {
+    if (decision === "pending") return;
     if (application.status !== "pending") return;
     setPanelError(null);
     setProcessingApplicationId(application.id);
@@ -440,13 +372,19 @@ export default function AdminDashboard() {
     setAutoPayoutEnabled((prev) => !prev);
   };
 
-  const handleManualPayout = async (hostKey: string) => {
-    if (autoPayoutEnabled) return;
-    const currentStatus = payoutStatus[hostKey];
-    if (currentStatus === "processing" || currentStatus === "paid") return;
-    setPayoutStatus((prev) => ({ ...prev, [hostKey]: "processing" }));
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    setPayoutStatus((prev) => ({ ...prev, [hostKey]: "paid" }));
+  const handleBookingAction = async (booking: Booking, status: BookingStatus) => {
+    if (booking.status === status) return;
+    setPanelError(null);
+    // Assuming you have an updatingBookingId state similar to updatingListingId if you want to show loading states
+    // setUpdatingBookingId(booking.id);
+    try {
+      await updateBookingStatus(booking.id, status);
+    } catch (error) {
+      console.error(error);
+      setPanelError("Unable to update booking status. Please try again.");
+    } finally {
+      // setUpdatingBookingId(null);
+    }
   };
 
   return (
@@ -650,25 +588,25 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Đặt phòng</p>
                 <p className="text-2xl font-semibold text-slate-900">
-                  {formatCurrency(revenueTotals.bookings)}
+                  {formatCurrency(analyticsSnapshot.revenueTotals.bookings)}
                 </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Đặt vé</p>
                 <p className="text-2xl font-semibold text-slate-900">
-                  {formatCurrency(revenueTotals.tickets)}
+                  {formatCurrency(analyticsSnapshot.revenueTotals.tickets)}
                 </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-400">Tổng cộng</p>
                 <p className="text-2xl font-semibold text-emerald-600">
-                  {formatCurrency(revenueTotals.total)}
+                  {formatCurrency(analyticsSnapshot.revenueTotals.total)}
                 </p>
               </div>
             </div>
 
             <div className="mt-6 space-y-4">
-              {activeRevenueSeries.map((entry) => (
+              {analyticsSnapshot.revenueSeries[revenueRange].map((entry) => (
                 <div key={`${entry.label}-${revenueRange}`}>
                   <div className="flex items-center justify-between text-xs text-slate-500">
                     <span className="font-medium text-slate-700">{entry.label}</span>
@@ -678,11 +616,11 @@ export default function AdminDashboard() {
                     <div className="group relative h-2 rounded-full bg-emerald-100">
                       <div
                         className="h-2 rounded-full bg-emerald-500"
-                        style={{ width: `${(entry.bookings / chartMax) * 100}%` }}
+                        style={{ width: `${(entry.bookings / analyticsSnapshot.chartMax) * 100}%` }}
                       />
                       <span
                         className="pointer-events-none absolute -top-7 inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100"
-                        style={getTooltipStyle(entry.bookings, chartMax)}
+                        style={getTooltipStyle(entry.bookings, analyticsSnapshot.chartMax)}
                       >
                         {formatCurrency(entry.bookings)}
                       </span>
@@ -690,11 +628,11 @@ export default function AdminDashboard() {
                     <div className="group relative h-2 rounded-full bg-sky-100">
                       <div
                         className="h-2 rounded-full bg-sky-500"
-                        style={{ width: `${(entry.tickets / chartMax) * 100}%` }}
+                        style={{ width: `${(entry.tickets / analyticsSnapshot.chartMax) * 100}%` }}
                       />
                       <span
                         className="pointer-events-none absolute -top-7 inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100"
-                        style={getTooltipStyle(entry.tickets, chartMax)}
+                        style={getTooltipStyle(entry.tickets, analyticsSnapshot.chartMax)}
                       >
                         {formatCurrency(entry.tickets)}
                       </span>
@@ -727,6 +665,102 @@ export default function AdminDashboard() {
                 Xem biểu đồ chi tiết
                 <ExternalLink className="h-3.5 w-3.5" />
               </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                  Bookings
+                </p>
+                <h2 className="text-xl font-semibold text-slate-900">Đặt phòng gần đây</h2>
+              </div>
+              <Link
+                to="/admin/bookings"
+                className="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Quản lý <ExternalLink className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+            {adminBookings.length === 0 && (
+              <p className="text-sm text-slate-500">Không có đặt phòng nào.</p>
+            )}
+            <div className="space-y-4">
+              {adminBookings.slice(0, 5).map((booking) => (
+                <div key={booking.id} className="rounded-xl border border-slate-100 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-900">
+                        {booking.type === "hotel" ? booking.hotel?.title : booking.flight?.flight_number}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {booking.user?.name ?? "Unknown User"} · {new Date(booking.created_at).toLocaleDateString("vi-VN")}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        booking.status === "pending"
+                          ? "bg-amber-100 text-amber-700"
+                          : booking.status === "confirmed"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-rose-100 text-rose-700"
+                      }`}>
+                      {booking.status === "pending"
+                        ? "Chờ xác nhận"
+                        : booking.status === "confirmed"
+                          ? "Đã xác nhận"
+                          : "Đã hủy"}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                    <span>Tổng tiền: {formatCurrency(booking.total_price)}</span>
+                    {booking.type === "hotel" && (
+                      <>
+                        <span>Nhận phòng: {new Date(booking.check_in!).toLocaleDateString("vi-VN")}</span>
+                        <span>Trả phòng: {new Date(booking.check_out!).toLocaleDateString("vi-VN")}</span>
+                      </>
+                    )}
+                    {booking.type === "flight" && booking.flight && (
+                      <>
+                        <span>Khởi hành: {new Date(booking.flight.departure_time).toLocaleString("vi-VN")}</span>
+                        <span>Đến: {new Date(booking.flight.arrival_time).toLocaleString("vi-VN")}</span>
+                      </>
+                    )}
+                    <span>Khách: {booking.guests}</span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewBooking(booking)}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      Xem chi tiết
+                    </button>
+                    {booking.status === "pending" && (
+                      <button
+                        type="button"
+                        onClick={() => handleBookingAction(booking, "confirmed")}
+                        className="inline-flex items-center gap-2 rounded-full border border-emerald-200 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Xác nhận
+                      </button>
+                    )}
+                    {booking.status !== "cancelled" && (
+                      <button
+                        type="button"
+                        onClick={() => handleBookingAction(booking, "cancelled")}
+                        className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Hủy
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -795,14 +829,12 @@ export default function AdminDashboard() {
                     <select
                       value={member.role}
                       onChange={(event) => handleRoleChange(member, event.target.value as UserRole)}
-                      disabled={roleUpdatingId === member.id}
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 disabled:opacity-60"
+                      disabled={roleUpdatingId === String(member.id)}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 disabled:opacity-60"
                     >
-                      {roleOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
+                      <option key="admin" value="admin">Admin</option>
+                      <option key="host" value="host">Host</option>
+                      <option key="member" value="member">Member</option>
                     </select>
                   </div>
                   <p className="mt-2 text-xs text-slate-500">Host status: {member.hostStatus}</p>
@@ -874,60 +906,64 @@ export default function AdminDashboard() {
                 </Link>
               </div>
             </div>
-            <div className="space-y-4">
-              {filteredApplications.map((application) => (
-                <div key={application.id} className="rounded-xl border border-slate-100 p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-900">{application.userName}</p>
-                      <p className="text-xs text-slate-500">{application.email}</p>
-                    </div>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${hostApplicationStyles[application.status]}`}
-                    >
-                      {application.status === "pending"
-                        ? "Đang chờ"
+            {filteredApplications.map((application) => (
+              <div key={application.id} className="rounded-xl border border-slate-100 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-slate-900">{application.userName}</p>
+                    <p className="text-xs text-slate-500">{application.email}</p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      application.status === "pending"
+                        ? "bg-amber-100 text-amber-700"
                         : application.status === "approved"
-                          ? "Đã duyệt"
-                          : "Đã từ chối"}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm text-slate-600">{application.message}</p>
-                  <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                    <span>SĐT: {application.phone ?? "Chưa cung cấp"}</span>
-                    <span>Kinh nghiệm: {application.experience}</span>
-                    <span className="sm:col-span-2">
-                      Số lượng phòng/căn hộ: {application.inventory ?? "Chưa rõ"}
-                    </span>
-                  </div>
-                  {application.status === "pending" && (
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => handleApplicationAction(application, "approved")}
-                        disabled={processingApplicationId === application.id}
-                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        Duyệt host
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleApplicationAction(application, "rejected")}
-                        disabled={processingApplicationId === application.id}
-                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-                      >
-                        <AlertTriangle className="h-4 w-4" />
-                        Từ chối
-                      </button>
-                    </div>
-                  )}
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-rose-100 text-rose-700"
+                    }`}
+                  >
+                    {application.status === "pending"
+                      ? "Đang chờ"
+                      : application.status === "approved"
+                        ? "Đã duyệt"
+                        : "Đã từ chối"}
+                  </span>
                 </div>
-              ))}
-              {hostApplications.length === 0 && (
-                <p className="text-sm text-slate-500">Chưa có đơn đăng ký nào.</p>
-              )}
-            </div>
+                <p className="mt-3 text-sm text-slate-600">{application.message}</p>
+                <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
+                  <span>SĐT: {application.phone ?? "Chưa cung cấp"}</span>
+                  <span>Kinh nghiệm: {application.experience}</span>
+                  <span className="sm:col-span-2">
+                    Số lượng phòng/căn hộ: {application.inventory ?? "Chưa rõ"}
+                  </span>
+                </div>
+                {application.status === "pending" && (
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => handleApplicationAction(application, "approved")}
+                      disabled={processingApplicationId === application.id}
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Duyệt host
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplicationAction(application, "rejected")}
+                      disabled={processingApplicationId === application.id}
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                      Từ chối
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {hostApplications.length === 0 && (
+              <p className="text-sm text-slate-500">Chưa có đơn đăng ký nào.</p>
+            )}
           </div>
 
           <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
@@ -1006,7 +1042,7 @@ export default function AdminDashboard() {
                       type="button"
                       onClick={() => handleListingAction(listing, "rejected")}
                       disabled={updatingListingId === listing.id}
-                      className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
                     >
                       <AlertTriangle className="h-4 w-4" />
                       Từ chối
@@ -1066,57 +1102,6 @@ export default function AdminDashboard() {
               </div>
 
               <div className="mt-6 max-h-[500px] space-y-4 overflow-y-auto pr-2">
-                {analyticsSnapshot.deposit.hostBreakdown.map((host) => {
-                  const status = payoutStatus[host.hostKey] ?? "pending";
-                  const actionLabel =
-                    status === "paid" ? "Đã thanh toán" : status === "processing" ? "Đang xử lý..." : "Thanh toán";
-                  return (
-                    <div key={host.hostKey} className="rounded-2xl border border-slate-100 p-5 shadow-sm">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-lg font-semibold text-slate-900">{host.hostName}</p>
-                          <p className="text-xs text-slate-500">
-                            {host.listings.length} phòng giữ cọc · {formatCurrency(host.totalDeposit)}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleManualPayout(host.hostKey)}
-                          disabled={autoPayoutEnabled || status === "processing" || status === "paid"}
-                          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
-                            status === "paid"
-                              ? "bg-slate-100 text-slate-500"
-                              : "bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
-                          }`}
-                        >
-                          {actionLabel}
-                        </button>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {host.listings.map((listing) => (
-                          <div key={listing.id} className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-semibold text-slate-900">{listing.title}</p>
-                                <p className="text-xs text-slate-500">
-                                  {listing.city} · {listing.bookingsCount} lượt đặt
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-base font-semibold text-emerald-600">
-                                  {formatCurrency(listing.deposit)}
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  Doanh thu phòng: {formatCurrency(listing.monthlyRevenue)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
                 {analyticsSnapshot.deposit.hostBreakdown.length === 0 && (
                   <p className="text-sm text-slate-500">Chưa có host nào cần đối soát.</p>
                 )}
@@ -1153,13 +1138,13 @@ export default function AdminDashboard() {
                 </button>
               </div>
               <div className="mt-8 grid grid-cols-2 gap-6 md:grid-cols-4">
-                {detailSeries.map((entry) => (
+                {analyticsSnapshot.detailSeries.map((entry) => (
                   <div key={`${chartView}-${entry.label}`} className="flex flex-col items-center gap-3">
                     <div className="flex h-48 w-full items-end justify-center gap-2">
                       <div className="group relative flex items-end">
                         <div
                           className="w-6 rounded-full bg-emerald-400"
-                          style={{ height: `${(entry.bookings / detailChartMax) * 100}%` }}
+                          style={{ height: `${(entry.bookings / analyticsSnapshot.detailChartMax) * 100}%` }}
                         />
                         <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
                           {formatCurrency(entry.bookings)}
@@ -1168,7 +1153,7 @@ export default function AdminDashboard() {
                       <div className="group relative flex items-end">
                         <div
                           className="w-6 rounded-full bg-sky-400"
-                          style={{ height: `${(entry.tickets / detailChartMax) * 100}%` }}
+                          style={{ height: `${(entry.tickets / analyticsSnapshot.detailChartMax) * 100}%` }}
                         />
                         <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white opacity-0 transition group-hover:opacity-100">
                           {formatCurrency(entry.tickets)}
@@ -1233,6 +1218,76 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {previewBooking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                    Chi tiết đặt phòng
+                  </p>
+                  <h3 className="text-xl font-semibold text-slate-900">
+                    {previewBooking.type === "hotel" ? previewBooking.hotel?.title : previewBooking.flight?.flight_number}
+                  </h3>
+                  <p className="text-sm text-slate-500">
+                    {previewBooking.user?.name ?? "Unknown User"} · {new Date(previewBooking.created_at).toLocaleDateString("vi-VN")}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setPreviewBooking(null)}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Đóng
+                </button>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 text-sm text-slate-600">
+                <span>Loại: {previewBooking.type === "hotel" ? "Khách sạn" : "Chuyến bay"}</span>
+                <span>Tổng tiền: {formatCurrency(previewBooking.total_price)}</span>
+                <span>Trạng thái thanh toán: {previewBooking.payment_status}</span>
+                <span>Số lượng khách: {previewBooking.guests}</span>
+                {previewBooking.type === "hotel" && (
+                  <>
+                    <span>Khách sạn: {previewBooking.hotel?.title}</span>
+                    <span>Phòng: {previewBooking.room?.name}</span>
+                    <span>Nhận phòng: {new Date(previewBooking.check_in!).toLocaleDateString("vi-VN")}</span>
+                    <span>Trả phòng: {new Date(previewBooking.check_out!).toLocaleDateString("vi-VN")}</span>
+                  </>
+                )}
+                {previewBooking.type === "flight" && previewBooking.flight && (
+                  <>
+                    <span>Thời gian khởi hành: {new Date(previewBooking.flight.departure_time).toLocaleString("vi-VN")}</span>
+                    <span>Thời gian đến: {new Date(previewBooking.flight.arrival_time).toLocaleString("vi-VN")}</span>
+                  </>
+                )}
+                <span>Người đặt: {previewBooking.user?.name} ({previewBooking.user?.email})</span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {previewBooking.status === "pending" && (
+                  <button
+                    type="button"
+                    onClick={() => handleBookingAction(previewBooking, "confirmed")}
+                    className="inline-flex items-center gap-2 rounded-full border border-emerald-200 px-3 py-1 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Xác nhận
+                  </button>
+                )}
+                {previewBooking.status !== "cancelled" && (
+                  <button
+                    type="button"
+                    onClick={() => handleBookingAction(previewBooking, "cancelled")}
+                    className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-3 py-1 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                    Hủy
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {panelError && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-700">
             {panelError}
@@ -1242,3 +1297,5 @@ export default function AdminDashboard() {
     </div>
   );
 }
+
+export default AdminDashboard;
