@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plane, MapPin, Clock, ShieldCheck, Ticket, Calendar, Info, CheckCircle2,} from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 type Flight = {
   id: number;
@@ -32,8 +32,46 @@ export default function FlightDetails() {
   const flight = location.state?.flight;
   const pax = location.state?.search?.pax || 1; // Lấy số lượng khách (pax)
 
+  // Nếu user vào trực tiếp URL (không có location.state), load từ mock JSON
+  const [fetchedFlight, setFetchedFlight] = useState<Flight | null>(null);
+  const activeFlight = flight ?? fetchedFlight;
+
+  useEffect(() => {
+    if (!flight && id) {
+      fetch('/mock/flights.json')
+        .then((res) => res.json())
+        .then((data: any[]) => {
+          const found = data.find((f) => String(f.id) === String(id) || String(f.flightNumber) === String(id));
+          if (!found) return;
+          const mapped: Flight = {
+            id: found.id,
+            airline: found.airline || found.airlineName || '',
+            flightNumber: found.flightNumber || found.number || '',
+            logo: found.logo || found.logoAlt || '',
+            from: found.fromAirport || found.from || '',
+            to: found.toAirport || found.to || '',
+            departureTime: found.departureTime ? new Date(found.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (found.departureTimeShort || ''),
+            arrivalTime: found.arrivalTime ? new Date(found.arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (found.arrivalTimeShort || ''),
+            duration: found.duration || (found.durationMin ? `${Math.floor(found.durationMin/60)}h ${found.durationMin%60}m` : ''),
+            stops: found.stops || (found.durationMin && found.durationMin > 300 ? '1 stop' : 'Direct'),
+            price: found.price || 0,
+            class: found.class || 'Economy',
+          };
+          setFetchedFlight(mapped);
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+  }, [flight, id]);
+
+  const formatVND = (usd: number) => {
+    const vnd = Math.round(usd * 33000);
+    return vnd.toLocaleString('vi-VN') + ' VND';
+  };
+
   // Fallback demo khi vào trực tiếp URL (chưa nối API theo id)
-  const notFound = useMemo(() => !flight, [flight]);
+  const notFound = useMemo(() => !activeFlight, [activeFlight]);
 
   // Stepper: 1-Review, 2-Seats, 3-Payment
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -193,6 +231,12 @@ export default function FlightDetails() {
                     </div>
                   </div>
                 </div>
+              </div>
+              {/* Promo pills */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="px-3 py-1 rounded-full bg-white text-sky-600 border border-sky-100 text-sm">Mã Khuyến Mãi Mới 'TVLKBANMOI' Giảm Giá Lên Đến 50k VND</span>
+                <span className="px-3 py-1 rounded-full bg-white text-sky-600 border border-sky-100 text-sm">BAYDONGVUIBF giảm đến 600K</span>
+                <span className="px-3 py-1 rounded-full bg-white text-sky-600 border border-sky-100 text-sm">Combo khứ hồi</span>
               </div>
             </div>
           </section>
