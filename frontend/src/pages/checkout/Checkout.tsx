@@ -74,11 +74,43 @@ const initialTravelerState = {
   address: "",
 };
 
+const CHECKOUT_STORAGE_KEY = "travelease.checkout-state";
+
+const readPersistedCheckout = (): LocationState | null => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CHECKOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") return parsed as LocationState;
+  } catch {
+    // ignore corrupted storage
+  }
+  return null;
+};
+
+const writePersistedCheckout = (value: LocationState | null) => {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(CHECKOUT_STORAGE_KEY, JSON.stringify(value));
+    } else {
+      window.localStorage.removeItem(CHECKOUT_STORAGE_KEY);
+    }
+  } catch {
+    // ignore quota errors
+  }
+};
+
 export default function Checkout() {
   const { state } = useLocation() as { state: LocationState | null };
+  const [persistedState, setPersistedState] = useState<LocationState | null>(() =>
+    readPersistedCheckout()
+  );
+
   const data = useMemo<LocationState>(
     () =>
-      state ?? {
+      state ?? persistedState ?? {
         hotelId: 0,
         hotelName: "Sample Hotel",
         hotelSlug: "sample",
@@ -96,7 +128,7 @@ export default function Checkout() {
         country: "Vietnam",
         flightId: undefined,
       },
-    [state]
+    [persistedState, state]
   );
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -120,6 +152,12 @@ export default function Checkout() {
     () => (isBookingResult(bookingResult) ? bookingResult : null),
     [bookingResult]
   );
+  const hasBookingTarget = useMemo(() => Boolean(data.hotelId || data.flightId), [data.flightId, data.hotelId]);
+  const isFlight = useMemo(() => Boolean(data.flightId), [data.flightId]);
+  const thumbnailFallback = isFlight
+    ? "/airplane.png"
+    : "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&auto=format&fit=crop";
+  const mainThumbnail = data.thumbnail || thumbnailFallback;
 
   const bookingFee = 12; // demo
   const subtotal = useMemo(() => data.totalPrice, [data.totalPrice]);
@@ -160,6 +198,14 @@ export default function Checkout() {
     return payload;
   }, [amount, data]);
 
+  useEffect(() => {
+    // Persist incoming state so page refresh keeps checkout context
+    if (state && (state.hotelId || state.flightId)) {
+      setPersistedState(state);
+      writePersistedCheckout(state);
+    }
+  }, [state]);
+
   const fetchIntent = useCallback(async () => {
     // Prevent unauthenticated requests — backend expects an authenticated user
     if (authLoading) return; // still determining auth status
@@ -168,6 +214,18 @@ export default function Checkout() {
         ...prev,
         loading: false,
         error: "Please sign in to complete your payment.",
+        clientSecret: "",
+        publishableKey: "",
+        paymentIntentId: "",
+      }));
+      return;
+    }
+
+    if (!hasBookingTarget) {
+      setIntentState((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Missing booking details. Please start from a hotel or flight page.",
         clientSecret: "",
         publishableKey: "",
         paymentIntentId: "",
@@ -272,7 +330,7 @@ export default function Checkout() {
         currency: "usd",
       });
     }
-  }, [amount, data]);
+  }, [amount, data, hasBookingTarget]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -290,6 +348,10 @@ export default function Checkout() {
       setBookingResult(booking ?? null);
       setBookingMessage(message ?? null);
       setStep(3);
+
+      // Clear persisted checkout once booking is done to avoid stale data
+      setPersistedState(null);
+      writePersistedCheckout(null);
     },
     [data.hotelId, data.thumbnail]
   );
@@ -314,6 +376,7 @@ export default function Checkout() {
     setBookingResult(null);
     setBookingMessage(null);
     setIsProcessingPayment(false);
+    // Keep persisted state intact here so users can retry after temporary errors
   }, []);
 
   return (
@@ -632,30 +695,45 @@ export default function Checkout() {
           <div className="rounded-2xl border border-slate-200 p-4">
             <h3 className="font-semibold text-slate-900 mb-3">Review Order Details</h3>
 
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              {[0, 1, 2].map((i) => (
+            {isFlight ? (
+              <div className="mb-3">
                 <img
-                  key={i}
-                  src={data.thumbnail}
-                  alt="thumb"
-                  className="h-20 w-full object-cover rounded-lg"
+                  src={mainThumbnail}
+                  alt="Flight"
+                  className="h-28 w-full object-contain rounded-xl bg-slate-50"
                   onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&auto=format&fit=crop";
+                    (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
                   }}
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[0, 1, 2].map((i) => (
+                  <img
+                    key={i}
+                    src={mainThumbnail}
+                    alt="thumb"
+                    className="h-20 w-full object-cover rounded-lg"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
+                    }}
+                  />
+                ))}
+              </div>
+            )}
 
             <div className="flex items-start gap-3">
               <img
-                src={data.thumbnail}
-                alt={data.flightId ? "Flight" : data.hotelName}
-                className="h-16 w-16 rounded-lg object-cover"
+                src={mainThumbnail}
+                alt={isFlight ? "Flight" : data.hotelName}
+                className={`h-16 w-16 rounded-lg ${isFlight ? "object-contain bg-slate-50" : "object-cover"}`}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
+                }}
               />
               <div className="flex-1">
                 <div className="font-semibold text-slate-900 leading-tight">
-                  {data.flightId ? "Flight Booking" : data.hotelName}
+                  {isFlight ? "Flight Booking" : data.hotelName}
                 </div>
                 <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center gap-1">
@@ -665,7 +743,7 @@ export default function Checkout() {
                   <span>128 Reviews</span>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  {data.flightId ? (
+                  {isFlight ? (
                     <>
                       <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
                         {data.guests} Passenger{data.guests > 1 ? 's' : ''}
@@ -757,6 +835,12 @@ function StripePaymentForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!stripe || !elements) return;
+
+    const hasBookingTarget = Boolean(bookingPayload.hotel_id || bookingPayload.flight_id);
+    if (!hasBookingTarget) {
+      setMessage("Missing booking details. Please start from a hotel or flight page.");
+      return;
+    }
 
     setSubmitting(true);
     setMessage(null);

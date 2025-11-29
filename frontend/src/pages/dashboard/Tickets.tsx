@@ -146,13 +146,23 @@ export default function Tickets() {
           <div className="space-y-6">
             {tickets.map((ticket) => {
               const statusConfig = getStatusConfig(ticket.status);
-              const flight = ticket.flight;
-              
-              if (!flight) return null;
+              const fallbackFlight = {
+                id: ticket.flight_id,
+                airline: "Flight",
+                flight_number: `#${ticket.flight_id}`,
+                fromAirport: "TBD",
+                toAirport: "TBD",
+                departureCity: "",
+                arrivalCity: "",
+                departure_time: ticket.created_at,
+                arrival_time: ticket.created_at,
+              };
+              const flight = ticket.flight ?? fallbackFlight;
 
               // Sử dụng duration/class từ flight data
               const mockDuration = flight.duration || "N/A";
               const mockClass = flight.class || "Economy";
+              const passengerCount = ticket.passengers?.length ?? ticket.guest_count ?? 0;
 
               // Format totalPrice properly
               const formattedPrice = typeof ticket.total_price === 'string'
@@ -270,20 +280,31 @@ export default function Tickets() {
                       <div className="flex items-center space-x-2 mb-3">
                         <Users className="h-5 w-5 text-sky-600" />
                         <span className="text-sm font-semibold text-gray-700">
-                          Passengers ({ticket.passengers.length})
+                          Passengers ({passengerCount || 1})
                         </span>
                       </div>
                       <div className="space-y-2">
-                        {ticket.passengers.map((passenger, index) => (
-                          <div key={index} className="flex items-center justify-between text-sm bg-white rounded-lg px-4 py-2">
+                        {ticket.passengers && ticket.passengers.length > 0 ? (
+                          ticket.passengers.map((passenger, index) => (
+                            <div key={index} className="flex items-center justify-between text-sm bg-white rounded-lg px-4 py-2">
+                              <div>
+                                <span className="font-medium text-gray-900">{passenger.name}</span>
+                              </div>
+                              <div className="text-gray-600">
+                                <span className="text-xs">Passport:</span> {passenger.passportNumber || '—'}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center justify-between text-sm bg-white rounded-lg px-4 py-2">
                             <div>
-                              <span className="font-medium text-gray-900">{passenger.name}</span>
+                              <span className="font-medium text-gray-900">Guests</span>
                             </div>
                             <div className="text-gray-600">
-                              <span className="text-xs">Passport:</span> {passenger.passportNumber}
+                              {passengerCount || 1} {passengerCount === 1 ? 'person' : 'people'}
                             </div>
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
 

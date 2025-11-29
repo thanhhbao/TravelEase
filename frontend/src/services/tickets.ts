@@ -17,6 +17,7 @@ export interface Ticket {
   total_price: number | string;
   status: "pending" | "confirmed" | "cancelled";
   created_at: string;
+  guest_count?: number;
   flight?: {
     id: number; // THÊM: Cần cho Link chi tiết chuyến bay
     airline: string;
@@ -96,25 +97,84 @@ export const ticketsService = {
    * - Nếu lỗi → đọc mock /public/mock/tickets.json → gộp với memory
    */
   async getMyTickets(userId: number): Promise<Ticket[]> {
-    try {
-      const server = await api
-        .get<Ticket[]>("/api/tickets")
-        .then((r) => r.data);
+    const collected: Ticket[] = [];
 
-      console.log('API Response:', server); // Debug log
-      return uniqById([...server, ...memory]).filter((t) => t.user_id === userId);
+    // 1) Lấy bookings flight để đảm bảo các đặt chỗ flight (checkout) cũng xuất hiện
+    try {
+      const response = await api.get("/api/my-bookings", {
+        params: { type: "flight", per_page: 50 },
+      });
+      const raw = response.data;
+      const bookings = Array.isArray(raw) ? raw : raw?.data ?? [];
+
+      const mappedFromBookings: Ticket[] = bookings
+        .filter((b: any) => b.flight_id)
+        .map((b: any) => {
+          const guests = Number(b.guests) || 0;
+          const passengers: Passenger[] = guests
+            ? Array.from({ length: guests }).map((_, idx) => ({
+                name: `Passenger ${idx + 1}`,
+                dateOfBirth: "",
+                passportNumber: "",
+              }))
+            : [];
+
+          return {
+            id: b.id,
+            user_id: b.user_id,
+            flight_id: b.flight_id,
+            passengers,
+            contact_email: "",
+            contact_phone: "",
+            total_price: b.total_price ?? 0,
+            status: b.status ?? "pending",
+            created_at: b.created_at ?? "",
+            guest_count: guests || undefined,
+            flight: b.flight
+              ? {
+                  id: b.flight.id,
+                  airline: b.flight.airline ?? "",
+                  flight_number: b.flight.flight_number ?? "",
+                  fromAirport: b.flight.fromAirport ?? b.flight.from_airport ?? "",
+                  toAirport: b.flight.toAirport ?? b.flight.to_airport ?? "",
+                  departureCity: b.flight.departureCity ?? b.flight.from_city ?? "",
+                  arrivalCity: b.flight.arrivalCity ?? b.flight.to_city ?? "",
+                  departure_time: b.flight.departure_time ?? b.flight.departureTime ?? "",
+                  arrival_time: b.flight.arrival_time ?? b.flight.arrivalTime ?? "",
+                  duration: b.flight.duration,
+                  class: b.flight.class,
+                }
+              : undefined,
+          };
+        });
+
+      collected.push(...mappedFromBookings);
     } catch (error) {
-      console.error('API Error:', error); // Debug log
+      console.error("API Error (my-bookings):", error);
+    }
+
+    // 2) Gộp thêm tickets API (nếu BE có bảng tickets)
+    try {
+      const ticketsApi = await api.get<Ticket[]>("/api/tickets").then((r) => r.data);
+      collected.push(...ticketsApi);
+    } catch (error) {
+      console.error("API Error (/api/tickets):", error);
+    }
+
+    // 3) Nếu cả hai call trên đều fail, fallback mock/memory; nếu không, trả về collected
+    if (collected.length === 0) {
       try {
-        // mock file không nhận query → đọc toàn bộ rồi filter
         const res = await fetch("/mock/tickets.json");
         if (!res.ok) throw new Error("mock not found");
         const mock = (await res.json()) as Ticket[];
-        return uniqById([...mock, ...memory]).filter((t) => t.user_id === userId);
+        collected.push(...mock);
       } catch {
-        return memory.filter((t) => t.user_id === userId);
+        // ignore
       }
     }
+
+    const combined = uniqById([...collected, ...memory]).filter((t) => t.user_id === userId);
+    return combined;
   },
 
   /**
