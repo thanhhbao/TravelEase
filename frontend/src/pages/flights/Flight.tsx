@@ -719,6 +719,7 @@ const FlightBookingUI: React.FC = () => {
 
   useEffect(() => {
     // Try to load additional flights from the public mock JSON and merge them
+    return;
     fetch('/mock/flights.json')
       .then((res) => res.json())
       .then((data: any[]) => {
@@ -1556,4 +1557,3 @@ const FlightBookingUI: React.FC = () => {
 };
 
 export default FlightBookingUI;
-

@@ -242,26 +242,32 @@ export default function Checkout() {
       paymentIntentId: "",
     }));
 
-    const metadata: Record<string, string> = {
-      booking_type: data.hotelId ? "hotel" : data.flightId ? "flight" : "custom",
-      guests: String(data.guests),
-      nights: String(data.nights),
-      city: data.city || "Unknown",
-      country: data.country || "Unknown",
+    const metadata: Record<string, string> = {};
+    const addMeta = (key: string, value: unknown) => {
+      if (value === undefined || value === null) return;
+      const str = typeof value === "string" ? value : String(value);
+      if (str.trim().length === 0) return;
+      metadata[key] = str;
     };
 
+    addMeta("booking_type", data.hotelId ? "hotel" : data.flightId ? "flight" : "custom");
+    addMeta("guests", data.guests);
+    addMeta("nights", data.nights);
+    addMeta("city", data.city || "Unknown");
+    addMeta("country", data.country || "Unknown");
+
     if (data.hotelId) {
-      metadata.hotel_name = data.hotelName || "Unknown Hotel";
-      metadata.hotel_slug = data.hotelSlug || "";
-      metadata.room_name = data.roomName || "Unknown Room";
-      metadata.hotel_id = String(data.hotelId);
-      metadata.room_id = String(data.roomId);
-      if (data.checkIn) metadata.check_in = data.checkIn;
-      if (data.checkOut) metadata.check_out = data.checkOut;
+      addMeta("hotel_name", data.hotelName || "Unknown Hotel");
+      addMeta("hotel_slug", data.hotelSlug);
+      addMeta("room_name", data.roomName || "Unknown Room");
+      addMeta("hotel_id", data.hotelId);
+      addMeta("room_id", data.roomId);
+      addMeta("check_in", data.checkIn);
+      addMeta("check_out", data.checkOut);
     }
 
     if (data.flightId) {
-      metadata.flight_id = String(data.flightId);
+      addMeta("flight_id", data.flightId);
     }
 
     try {

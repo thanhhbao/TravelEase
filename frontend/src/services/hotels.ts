@@ -1,3 +1,4 @@
+import { api } from "../lib/api";
 // src/services/hotels.ts
 
 export type Room = {
@@ -12,7 +13,7 @@ export type Room = {
 export type Hotel = {
   amenities?: string[];
   id: number;
-  slug: string;
+  slug?: string;
   name: string;
   city: string;
   country: string;
@@ -34,38 +35,50 @@ type ListParams = {
   min?: number;
   max?: number;
   stars?: number;
-  
 };
 
-// Load toàn bộ hotels (mock từ /public/mock/hotels.json) + filter cơ bản
+// Load hotels từ API (DB)
 export async function listHotels(params: ListParams = {}): Promise<HotelFull[]> {
-  const res = await fetch("/mock/hotels.json", { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = (await res.json()) as HotelFull[];
-
   const { q, city, min, max, stars } = params;
-  return data.filter((h) => {
-    const okQ =
-      !q ||
-      (h.name + h.city + h.country + (h.description || ""))
-        .toLowerCase()
-        .includes(q.toLowerCase());
-    const okCity = !city || h.city.toLowerCase().includes(city.toLowerCase());
-    const okMin = min == null || h.pricePerNight >= min;
-    const okMax = max == null || h.pricePerNight <= max;
-    const okStars = !stars || h.stars >= stars; // “từ X sao trở lên”
-    return okQ && okCity && okMin && okMax && okStars;
-  });
+  const query = {
+    name: q,
+    city,
+    min_price: min,
+    max_price: max,
+    stars,
+    per_page: 200,
+  };
+  const { data } = await api.get("/api/hotels", { params: query });
+  const rows = Array.isArray(data) ? data : data?.data ?? [];
+  return (rows as any[]).map((raw) => ({
+    ...raw,
+    slug: raw.slug ?? undefined,
+    pricePerNight: raw.pricePerNight ?? raw.price_per_night ?? 0,
+    thumbnail: raw.thumbnail ?? raw.images?.[0] ?? "",
+  })) as HotelFull[];
 }
 
 // Lấy 1 hotel theo slug hoặc id; trả về null nếu không thấy
 async function getHotel(idOrSlug: string | number): Promise<HotelFull | null> {
-  const all = await listHotels();
-  const key = String(idOrSlug).toLowerCase();
-  const found =
-    all.find((h) => String(h.slug).toLowerCase() === key) ||
-    all.find((h) => String(h.id) === key);
-  return found ?? null;
+  const key = String(idOrSlug);
+  // Nếu là số -> gọi thẳng /api/hotels/{id}
+  if (!Number.isNaN(Number(key))) {
+    try {
+      const { data } = await api.get(`/api/hotels/${key}`);
+      return data as HotelFull;
+    } catch {
+      return null;
+    }
+  }
+
+  // Nếu là slug -> thử tìm theo name chứa slug
+  try {
+    const { data } = await api.get("/api/hotels", { params: { name: key, per_page: 1 } });
+    const rows = Array.isArray(data) ? data : data?.data ?? [];
+    return (rows as HotelFull[])[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // (tuỳ dùng) trả danh sách phòng theo hotelId

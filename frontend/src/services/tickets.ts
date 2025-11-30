@@ -94,7 +94,7 @@ export const ticketsService = {
   /**
    * Lấy vé của user:
    * - Thử GET /api/tickets?userId=...
-   * - Nếu lỗi → đọc mock /public/mock/tickets.json → gộp với memory
+   * - Không dùng mock khi đã có DB
    */
   async getMyTickets(userId: number): Promise<Ticket[]> {
     const collected: Ticket[] = [];
@@ -162,17 +162,6 @@ export const ticketsService = {
     }
 
     // 3) Nếu cả hai call trên đều fail, fallback mock/memory; nếu không, trả về collected
-    if (collected.length === 0) {
-      try {
-        const res = await fetch("/mock/tickets.json");
-        if (!res.ok) throw new Error("mock not found");
-        const mock = (await res.json()) as Ticket[];
-        collected.push(...mock);
-      } catch {
-        // ignore
-      }
-    }
-
     const combined = uniqById([...collected, ...memory]).filter((t) => t.user_id === userId);
     return combined;
   },

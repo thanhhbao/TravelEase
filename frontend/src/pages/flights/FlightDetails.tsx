@@ -1,6 +1,7 @@
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plane, MapPin, Clock, ShieldCheck, Ticket, Calendar, Info, CheckCircle2,} from "lucide-react";
 import { useMemo, useState, useEffect } from "react";
+import { flightsService } from "../../services/flights";
 
 type Flight = {
   id: number;
@@ -38,30 +39,33 @@ export default function FlightDetails() {
 
   useEffect(() => {
     if (!flight && id) {
-      fetch('/mock/flights.json')
-        .then((res) => res.json())
-        .then((data: any[]) => {
-          const found = data.find((f) => String(f.id) === String(id) || String(f.flightNumber) === String(id));
-          if (!found) return;
-          const mapped: Flight = {
-            id: found.id,
-            airline: found.airline || found.airlineName || '',
-            flightNumber: found.flightNumber || found.number || '',
-            logo: found.logo || found.logoAlt || '',
-            from: found.fromAirport || found.from || '',
-            to: found.toAirport || found.to || '',
-            departureTime: found.departureTime ? new Date(found.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (found.departureTimeShort || ''),
-            arrivalTime: found.arrivalTime ? new Date(found.arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (found.arrivalTimeShort || ''),
-            duration: found.duration || (found.durationMin ? `${Math.floor(found.durationMin/60)}h ${found.durationMin%60}m` : ''),
-            stops: found.stops || (found.durationMin && found.durationMin > 300 ? '1 stop' : 'Direct'),
-            price: found.price || 0,
-            class: found.class || 'Economy',
-          };
-          setFetchedFlight(mapped);
-        })
-        .catch(() => {
-          // ignore
-        });
+      flightsService.getFlight(Number(id)).then((data) => {
+        const mapped: Flight = {
+          id: data.id,
+          airline: (data as any).airline || '',
+          flightNumber: (data as any).flightNumber || (data as any).flight_number || '',
+          logo: (data as any).logo || '',
+          from: (data as any).fromAirport || (data as any).from_airport || '',
+          to: (data as any).toAirport || (data as any).to_airport || '',
+          departureTime: (data as any).departureTime
+            ? new Date((data as any).departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : ((data as any).departure_time
+              ? new Date((data as any).departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : ''),
+          arrivalTime: (data as any).arrivalTime
+            ? new Date((data as any).arrivalTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : ((data as any).arrival_time
+              ? new Date((data as any).arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : ''),
+          duration: (data as any).duration || '',
+          stops: (data as any).stops || 'Direct',
+          price: (data as any).price || 0,
+          class: (data as any).class || 'Economy',
+        };
+        setFetchedFlight(mapped);
+      }).catch(() => {
+        // ignore
+      });
     }
   }, [flight, id]);
 

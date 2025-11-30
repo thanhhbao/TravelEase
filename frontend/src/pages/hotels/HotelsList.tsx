@@ -357,7 +357,10 @@ export default function HotelsList() {
                     <div key={hotel.id} className="group">
                       {viewMode === "grid" ? (
                         <div className="relative h-full flex flex-col bg-white/65 backdrop-blur-md border border-white/40 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition">
-                          <Link to={`/hotels/${hotel.slug}`} className="absolute inset-0 z-10" />
+                          <Link
+                            to={`/hotels/${hotel.slug ?? hotel.id}`}
+                            className="absolute inset-0 z-10"
+                          />
                           <div className="relative h-64">
                             <img
                               src={hotel.thumbnail}
@@ -401,7 +404,10 @@ export default function HotelsList() {
                         </div>
                       ) : (
                         <div className="relative bg-white/65 backdrop-blur-md border border-white/40 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition flex flex-col md:flex-row">
-                          <Link to={`/hotels/${hotel.slug}`} className="absolute inset-0 z-10" />
+                          <Link
+                            to={`/hotels/${hotel.slug ?? hotel.id}`}
+                            className="absolute inset-0 z-10"
+                          />
                           <div className="relative md:w-80 h-64 md:h-auto">
                             <img
                               src={hotel.thumbnail}

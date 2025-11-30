@@ -54,7 +54,7 @@ class HotelController extends Controller
      */
     public function show($id): JsonResponse
     {
-        $hotel = Hotel::find($id);
+        $hotel = Hotel::with('rooms')->find($id);
 
         if (!$hotel) {
             return response()->json(['message' => 'Hotel not found'], 404);

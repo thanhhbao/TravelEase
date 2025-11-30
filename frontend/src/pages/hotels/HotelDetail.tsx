@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { hotelsService } from "../../services/hotels";
 
 /* ---------------- Fallback mock (dev offline) ---------------- */
 const mockHotelData = {
@@ -84,7 +85,7 @@ type Room = {
 };
 type Hotel = {
   id: number;
-  slug: string;
+  slug?: string;
   name: string;
   city: string;
   country: string;
@@ -92,7 +93,7 @@ type Hotel = {
   pricePerNight: number;
   thumbnail: string;
   description: string;
-  amenities: string[];
+  amenities?: string[];
   images?: string[];
   rating?: number;
   reviews?: number;
@@ -152,9 +153,7 @@ export default function HotelDetail() {
       setIsLoading(true);
       try {
         if (slug) {
-          const res = await fetch("/mock/hotels.json", { cache: "no-store" });
-          const list: Hotel[] = res.ok ? await res.json() : [];
-          const found = list.find((h) => h.slug === slug);
+          const found = await hotelsService.getHotel(slug);
           if (mounted && found) {
             const gallery = found.images?.length ? found.images : [found.thumbnail];
             const withImages = { ...found, images: gallery };
@@ -199,22 +198,27 @@ export default function HotelDetail() {
   const totalPrice = selectedRoom ? selectedRoom.price * nights : hotel?.pricePerNight ?? 0;
 
   const goCheckout = () => {
-    if (!hotel || !selectedRoom) return;
+    if (!hotel) return;
+    const room = selectedRoom ?? hotel.rooms?.[0] ?? null;
+    if (!room) {
+      alert("No rooms available for booking right now.");
+      return;
+    }
     // điều hướng tới /checkout, mang theo dữ liệu
     navigate("/checkout", {
       state: {
         hotelId: hotel.id,
         hotelName: hotel.name,
         hotelSlug: hotel.slug,
-        roomId: selectedRoom.id,
-        roomName: selectedRoom.name,
+        roomId: room.id,
+        roomName: room.name,
         checkIn: checkIn || getTodayDate(),
         checkOut: checkOut || getTomorrowDate(),
         guests,
         nights,
-        pricePerNight: selectedRoom.price,
+        pricePerNight: room.price,
         totalPrice,
-        thumbnail: selectedRoom.images?.[0] ?? hotel.images?.[0] ?? hotel.thumbnail,
+        thumbnail: room.images?.[0] ?? hotel.images?.[0] ?? hotel.thumbnail,
         city: hotel.city,
         country: hotel.country,
       },
@@ -409,7 +413,8 @@ export default function HotelDetail() {
 
                 <button
                   onClick={goCheckout}
-                  className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-semibold hover:bg-slate-800 transition"
+                  disabled={!hotel.rooms || hotel.rooms.length === 0}
+                  className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-semibold hover:bg-slate-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   Check availability
                 </button>
@@ -432,7 +437,7 @@ export default function HotelDetail() {
         <section className="mt-8">
           <h3 className="text-xl font-semibold text-slate-900 mb-4">Facilities</h3>
           <div className="flex flex-wrap gap-3">
-            {hotel.amenities.map((amenity) => {
+            {(hotel.amenities ?? []).map((amenity) => {
               const Icon = amenityIcons[amenity] || Star;
               return (
                 <div
@@ -451,7 +456,7 @@ export default function HotelDetail() {
         <section className="mt-10">
           <h3 className="text-xl font-semibold text-slate-900 mb-4">Available Rooms</h3>
           <div className="grid gap-4">
-            {hotel.rooms.map((room) => (
+            {(hotel.rooms ?? []).map((room) => (
               <div
                 key={room.id}
                 className="rounded-2xl border border-slate-200 p-4 flex flex-col md:flex-row gap-4"

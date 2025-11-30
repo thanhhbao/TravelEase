@@ -25,19 +25,10 @@ export interface FlightSearchParams {
 let cacheAll: Flight[] | null = null;
 
 const fetchAllFlights = async (): Promise<Flight[]> => {
-  try {
-    // Ưu tiên BE thật: GET /api/flights (có thể truyền query ở ngoài)
-    const { data } = await api.get<Flight[]>("/api/flights");
-    cacheAll = data;
-    return data;
-  } catch {
-    // Fallback mock: /public/mock/flights.json
-    const res = await fetch("/mock/flights.json");
-    if (!res.ok) throw new Error("Cannot load flights mock");
-    const mock = (await res.json()) as Flight[];
-    cacheAll = mock;
-    return mock;
-  }
+  const { data } = await api.get("/api/flights", { params: { per_page: 100 } });
+  const rows = Array.isArray(data) ? data : data?.data ?? [];
+  cacheAll = rows as Flight[];
+  return cacheAll;
 };
 
 const sameDay = (iso: string, ymd: string) => {
@@ -54,32 +45,24 @@ export const flightsService = {
    * - Nếu lỗi / chưa có BE: đọc mock rồi lọc client-side.
    */
   async searchFlights(params: FlightSearchParams): Promise<Flight[]> {
-    // thử gọi BE với params trước
-    try {
-      const { data } = await api.get<Flight[]>("/api/flights", { params });
-      cacheAll = data;
-      return data;
-    } catch {
-      // fallback: mock + lọc client
-      const flights = cacheAll ?? (await fetchAllFlights());
-
-      return flights.filter((f) => {
-        if (params.from && !f.fromAirport.toLowerCase().includes(params.from.toLowerCase())) {
-          return false;
-        }
-        if (params.to && !f.toAirport.toLowerCase().includes(params.to.toLowerCase())) {
-          return false;
-        }
-        if (params.airline && !f.airline.toLowerCase().includes(params.airline.toLowerCase())) {
-          return false;
-        }
-        if (params.departure && !sameDay(f.departureTime, params.departure)) {
-          return false;
-        }
-        // params.return: tuỳ bạn implement round-trip, ở đây bỏ qua
-        return true;
-      });
+    const { data } = await api.get("/api/flights", {
+      params: {
+        from_city: params.from,
+        to_city: params.to,
+        airline: params.airline,
+        departure: params.departure,
+        return: params.return,
+        per_page: 100,
+      },
+    });
+    const rows = Array.isArray(data) ? data : data?.data ?? [];
+    const flights = rows as Flight[];
+    cacheAll = flights;
+    // Nếu backend chưa filter theo ngày, lọc nhẹ ở FE
+    if (params.departure) {
+      return flights.filter((f) => sameDay(f.departureTime, params.departure!));
     }
+    return flights;
   },
 
   /**
@@ -88,14 +71,7 @@ export const flightsService = {
    * - Fallback: tìm trong cache/mock
    */
   async getFlight(id: number): Promise<Flight> {
-    try {
-      const { data } = await api.get<Flight>(`/api/flights/${id}`);
-      return data;
-    } catch {
-      const flights = cacheAll ?? (await fetchAllFlights());
-      const found = flights.find((f) => f.id === id);
-      if (!found) throw new Error("Flight not found");
-      return found;
-    }
+    const { data } = await api.get<Flight>(`/api/flights/${id}`);
+    return data;
   },
 };
