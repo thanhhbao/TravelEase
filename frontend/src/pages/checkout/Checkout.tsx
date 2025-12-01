@@ -16,6 +16,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { createBooking, createPaymentIntent } from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
 import { rememberBookingPreview } from "../../utils/bookingPreview";
+import { rememberTicketExtras } from "../../utils/ticketExtras";
 
 type LocationState = {
   hotelId: number;
@@ -33,6 +34,7 @@ type LocationState = {
   city: string;
   country: string;
   flightId?: number;
+  seatIds?: string[];
 };
 
 type BookingPayload = {
@@ -64,6 +66,12 @@ type BookingResult = {
   created_at?: string;
   hotel?: { name?: string | null };
   room?: { name?: string | null };
+};
+
+type PassengerForm = {
+  name: string;
+  passport: string;
+  seat?: string;
 };
 
 const initialTravelerState = {
@@ -102,34 +110,64 @@ const writePersistedCheckout = (value: LocationState | null) => {
   }
 };
 
+const normalizeId = (value: unknown): number | undefined => {
+  const num = typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+};
+
+const normalizeGuests = (value: unknown): number => {
+  const num = typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+  if (Number.isFinite(num) && num > 0) return Math.floor(num);
+  return 1;
+};
+
 export default function Checkout() {
-  const { state } = useLocation() as { state: LocationState | null };
+  const location = useLocation();
+  const state = (location.state as LocationState | null) ?? null;
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const [persistedState, setPersistedState] = useState<LocationState | null>(() =>
     readPersistedCheckout()
   );
 
-  const data = useMemo<LocationState>(
-    () =>
-      state ?? persistedState ?? {
-        hotelId: 0,
-        hotelName: "Sample Hotel",
-        hotelSlug: "sample",
-        roomId: 1,
-        roomName: "Deluxe King",
-        checkIn: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-        checkOut: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
-        guests: 2,
-        nights: 2,
-        pricePerNight: 180,
-        totalPrice: 360,
-        thumbnail:
-          "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop",
-        city: "Hanoi",
-        country: "Vietnam",
-        flightId: undefined,
-      },
-    [persistedState, state]
-  );
+  const data = useMemo<LocationState>(() => {
+    const fallback: LocationState = {
+      hotelId: 0,
+      hotelName: "Sample Hotel",
+      hotelSlug: "sample",
+      roomId: 1,
+      roomName: "Deluxe King",
+      checkIn: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      checkOut: new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10),
+      guests: 1,
+      nights: 2,
+      pricePerNight: 180,
+      totalPrice: 360,
+      thumbnail:
+        "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1200&auto=format&fit=crop",
+      city: "Hanoi",
+      country: "Vietnam",
+      flightId: undefined,
+      seatIds: [],
+    };
+
+    const source = state ?? persistedState ?? fallback;
+    const queryHotelId = normalizeId(searchParams.get("hotelId"));
+    const queryFlightId = normalizeId(searchParams.get("flightId"));
+    const normalizedHotelId = normalizeId(source.hotelId ?? queryHotelId) ?? 0;
+    const normalizedFlightId = normalizeId(source.flightId ?? queryFlightId);
+    const normalizedGuests = normalizeGuests(source.guests);
+    const seatIds = Array.isArray(source.seatIds) ? source.seatIds : [];
+
+    return {
+      ...fallback,
+      ...source,
+      hotelId: normalizedHotelId,
+      flightId: normalizedFlightId,
+      guests: normalizedGuests,
+      seatIds,
+      totalPrice: Number(source.totalPrice ?? fallback.totalPrice),
+    };
+  }, [persistedState, searchParams, state]);
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [agreeSMS, setAgreeSMS] = useState(true);
@@ -146,13 +184,22 @@ export default function Checkout() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [travelerInfo, setTravelerInfo] = useState(initialTravelerState);
   const [travelerErrors, setTravelerErrors] = useState<Partial<typeof initialTravelerState>>({});
+  const [passengers, setPassengers] = useState<PassengerForm[]>(() =>
+    Array.from({ length: normalizeGuests(data.guests) }, () => ({ name: "", passport: "" }))
+  );
+  const [passengerErrors, setPassengerErrors] = useState<Array<{ name?: string; passport?: string }>>(
+    []
+  );
 
   const { user, loading: authLoading } = useAuth();
   const bookingSummary = useMemo(
     () => (isBookingResult(bookingResult) ? bookingResult : null),
     [bookingResult]
   );
-  const hasBookingTarget = useMemo(() => Boolean(data.hotelId || data.flightId), [data.flightId, data.hotelId]);
+  const hasBookingTarget = useMemo(
+    () => Boolean(normalizeId(data.hotelId) || normalizeId(data.flightId)),
+    [data.flightId, data.hotelId]
+  );
   const isFlight = useMemo(() => Boolean(data.flightId), [data.flightId]);
   const thumbnailFallback = isFlight
     ? "/airplane.png"
@@ -179,8 +226,8 @@ export default function Checkout() {
                 borderRadius: "14px",
               },
             },
-          }
-        : undefined,
+        }
+      : undefined,
     [intentState.clientSecret]
   );
   const bookingPayload = useMemo<BookingPayload>(() => {
@@ -189,22 +236,58 @@ export default function Checkout() {
       total_price: amount,
     };
 
-    if (data.hotelId) payload.hotel_id = data.hotelId;
-    if (data.roomId) payload.room_id = data.roomId;
-    if (data.flightId) payload.flight_id = data.flightId;
+    const hotelId = normalizeId(data.hotelId);
+    const roomId = normalizeId(data.roomId);
+    const flightId = normalizeId(data.flightId);
+
+    if (hotelId) payload.hotel_id = hotelId;
+    if (roomId) payload.room_id = roomId;
+    if (flightId) payload.flight_id = flightId;
     if (data.checkIn) payload.check_in = data.checkIn;
     if (data.checkOut) payload.check_out = data.checkOut;
+    if (data.seatIds && data.seatIds.length > 0) {
+      (payload as any).seat_ids = data.seatIds;
+    }
+    // attach passengers to payload when available
+    if (passengers.length > 0) {
+      (payload as any).passengers = passengers;
+    }
 
     return payload;
-  }, [amount, data]);
+  }, [amount, data, passengers]);
+
+  // require passenger info before payment for flights
+  useEffect(() => {
+    if (isFlight && step === 2) {
+      const allPassengersFilled = passengers.every(
+        (p) => p.name.trim() && p.passport.trim()
+      );
+      if (!allPassengersFilled) {
+        setStep(1);
+        toast.error("Please enter passenger details for each seat before payment.");
+      }
+    }
+  }, [isFlight, passengers, step]);
 
   useEffect(() => {
     // Persist incoming state so page refresh keeps checkout context
-    if (state && (state.hotelId || state.flightId)) {
+    if (state && (normalizeId(state.hotelId) || normalizeId(state.flightId))) {
       setPersistedState(state);
       writePersistedCheckout(state);
     }
   }, [state]);
+
+  useEffect(() => {
+    // keep passengers length in sync with guest count (e.g., seat selection)
+    const target = normalizeGuests(data.guests);
+    setPassengers((prev) => {
+      if (prev.length === target) return prev;
+      const next = [...prev];
+      while (next.length < target) next.push({ name: "", passport: "" });
+      while (next.length > target) next.pop();
+      return next;
+    });
+  }, [data.guests]);
 
   const fetchIntent = useCallback(async () => {
     // Prevent unauthenticated requests — backend expects an authenticated user
@@ -336,19 +419,33 @@ export default function Checkout() {
         currency: "usd",
       });
     }
-  }, [amount, data, hasBookingTarget]);
+  }, [amount, data, hasBookingTarget, authLoading, user]);
 
   useEffect(() => {
     if (step !== 2) return;
     if (intentState.clientSecret || intentState.loading || intentState.error) return;
 
+    // wait until auth check finishes to avoid early exit in fetchIntent
+    if (authLoading) return;
+
     void fetchIntent();
-  }, [fetchIntent, intentState.clientSecret, intentState.error, intentState.loading, step]);
+  }, [authLoading, fetchIntent, intentState.clientSecret, intentState.error, intentState.loading, step]);
 
   const handlePaymentSuccess = useCallback(
     (booking: unknown, message?: string | null) => {
-      if (isBookingResult(booking) && data.hotelId && data.thumbnail) {
-        rememberBookingPreview(booking.id, data.thumbnail);
+      if (isBookingResult(booking)) {
+        if (data.hotelId && data.thumbnail) {
+          rememberBookingPreview(booking.id, data.thumbnail);
+        }
+        // persist passengers + seats for tickets view
+        rememberTicketExtras(booking.id, {
+          passengers: passengers.map((p) => ({
+            name: p.name,
+            passport: p.passport,
+            seat: p.seat,
+          })),
+          seats: data.seatIds,
+        });
       }
 
       setBookingResult(booking ?? null);
@@ -359,7 +456,7 @@ export default function Checkout() {
       setPersistedState(null);
       writePersistedCheckout(null);
     },
-    [data.hotelId, data.thumbnail]
+    [data.hotelId, data.thumbnail, data.seatIds, passengers]
   );
 
   const handleProcessingChange = useCallback((processing: boolean) => {
@@ -421,94 +518,68 @@ export default function Checkout() {
 
           {step === 1 && (
             <div className="mt-8 space-y-8">
-              {/* Contact Detail */}
-              <Section title="Contact Detail">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    label="Email"
-                    placeholder="input email"
-                    type="email"
-                    value={travelerInfo.email}
-                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, email: val }))}
-                    error={travelerErrors.email}
-                  />
-                  <Input
-                    label="Phone Number"
-                    placeholder="input phone number"
-                    value={travelerInfo.phone}
-                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, phone: val }))}
-                    error={travelerErrors.phone}
-                  />
-                </div>
-                <label className="mt-3 flex items-center gap-2 text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={agreeSMS}
-                    onChange={(e) => setAgreeSMS(e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                  <span className="text-sm">
-                    Receive text message updates about your booking. Message rates may apply.
-                  </span>
-                </label>
-              </Section>
-
-              {/* Traveler Detail */}
-              <Section title="Traveler Detail">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    label="First Name"
-                    placeholder="input first name"
-                    value={travelerInfo.firstName}
-                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, firstName: val }))}
-                    error={travelerErrors.firstName}
-                  />
-                  <Input
-                    label="Last Name"
-                    placeholder="input last name"
-                    value={travelerInfo.lastName}
-                    onChange={(val) => setTravelerInfo((prev) => ({ ...prev, lastName: val }))}
-                    error={travelerErrors.lastName}
-                  />
-                </div>
-                <Input
-                  label="Address"
-                  placeholder="input your address"
-                  className="mt-4"
-                  value={travelerInfo.address}
-                  onChange={(val) => setTravelerInfo((prev) => ({ ...prev, address: val }))}
-                  error={travelerErrors.address}
-                />
-              </Section>
-
-              {/* Promo code */}
-              <Section title="Promo Code">
-                <div className="relative">
-                  <input
-                    placeholder="input promo code"
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                  />
-                  <button className="absolute right-2 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-700 hover:text-slate-900">
-                    Find promo code?
-                  </button>
+              {/* Passenger details (required per seat) */}
+              <Section title="Passenger Details">
+                <p className="text-sm text-slate-600 mb-3">
+                  Enter passenger info for each seat. We pre-fill contact with your account where possible.
+                </p>
+                <div className="space-y-3">
+                  {passengers.map((p, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
+                    >
+                      <div className="text-sm font-semibold text-slate-800">Passenger {idx + 1}</div>
+                      <Input
+                        label="Full name"
+                        placeholder="Enter passenger name"
+                        value={p.name}
+                        onChange={(val) => {
+                          setPassengers((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], name: val };
+                            return next;
+                          });
+                        }}
+                        error={passengerErrors[idx]?.name}
+                      />
+                      <Input
+                        label="Passport"
+                        placeholder="Enter passport number"
+                        value={p.passport}
+                        onChange={(val) => {
+                          setPassengers((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx], passport: val };
+                            return next;
+                          });
+                        }}
+                        error={passengerErrors[idx]?.passport}
+                      />
+                    </div>
+                  ))}
                 </div>
               </Section>
 
               <div className="pt-2">
                 <button
                   onClick={() => {
-                    const nextErrors: Partial<typeof initialTravelerState> = {};
-                    if (!travelerInfo.email.trim()) nextErrors.email = "Email is required";
-                    if (!travelerInfo.phone.trim()) nextErrors.phone = "Phone number is required";
-                    if (!travelerInfo.firstName.trim())
-                      nextErrors.firstName = "First name is required";
-                    if (!travelerInfo.lastName.trim()) nextErrors.lastName = "Last name is required";
-                    if (!travelerInfo.address.trim())
-                      nextErrors.address = "Address is required";
+                    const nextPassengerErrors: Array<{ name?: string; passport?: string }> = [];
+                    passengers.forEach((p, i) => {
+                      const errs: { name?: string; passport?: string } = {};
+                      if (!p.name.trim()) errs.name = "Name required";
+                      if (!p.passport.trim()) errs.passport = "Passport required";
+                      nextPassengerErrors[i] = errs;
+                    });
+                    setPassengerErrors(nextPassengerErrors);
 
-                    setTravelerErrors(nextErrors);
-                    if (Object.keys(nextErrors).length === 0) {
+                    const hasPassengerErrors = nextPassengerErrors.some(
+                      (err) => err.name || err.passport
+                    );
+                    if (!hasPassengerErrors) {
                       setStep(2);
+                    } else {
+                      toast.error("Please complete passenger details for each seat.");
                     }
                   }}
                   className="w-full md:w-48 bg-slate-900 text-white py-3 rounded-xl font-semibold hover:bg-slate-800 transition"
@@ -702,64 +773,90 @@ export default function Checkout() {
             <h3 className="font-semibold text-slate-900 mb-3">Review Order Details</h3>
 
             {isFlight ? (
-              <div className="mb-3">
-                <img
-                  src={mainThumbnail}
-                  alt="Flight"
-                  className="h-28 w-full object-contain rounded-xl bg-slate-50"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
-                  }}
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {[0, 1, 2].map((i) => (
+              <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-600 uppercase">Flight</span>
+                  <span className="text-[11px] font-semibold rounded-full bg-amber-100 text-amber-700 px-2.5 py-1">
+                    Booking confirmation: Pending
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-3">
                   <img
-                    key={i}
                     src={mainThumbnail}
-                    alt="thumb"
-                    className="h-20 w-full object-cover rounded-lg"
+                    alt="Flight"
+                    className="h-14 w-14 rounded-lg object-contain bg-white border border-slate-200"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
                     }}
                   />
-                ))}
-              </div>
-            )}
+                  <div className="flex-1 space-y-1">
+                    <div className="text-sm font-semibold text-slate-900">{data.hotelName || "Flight booking"}</div>
+                    <div className="text-xs text-slate-600 flex flex-wrap items-center gap-2">
+                      <span className="px-2 py-1 rounded-full bg-white border border-slate-200">
+                        {data.guests} Passenger{data.guests > 1 ? "s" : ""}
+                      </span>
+                      {data.flightId && (
+                        <span className="px-2 py-1 rounded-full bg-white border border-slate-200">
+                          Flight #{data.flightId}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-600 flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {data.city || "Route TBC"}
+                    </div>
+                  </div>
+                </div>
 
-            <div className="flex items-start gap-3">
-              <img
-                src={mainThumbnail}
-                alt={isFlight ? "Flight" : data.hotelName}
-                className={`h-16 w-16 rounded-lg ${isFlight ? "object-contain bg-slate-50" : "object-cover"}`}
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
-                }}
-              />
-              <div className="flex-1">
-                <div className="font-semibold text-slate-900 leading-tight">
-                  {isFlight ? "Flight Booking" : data.hotelName}
+                <div className="rounded-lg bg-white border border-slate-200 p-3 text-xs text-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Departure</span>
+                    <span className="text-slate-500">Duration est.</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
+                    <span>{data.city?.split("→")[0]?.trim() || "—"}</span>
+                    <span className="text-slate-500">→</span>
+                    <span>{data.city?.split("→")[1]?.trim() || "—"}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">Record locator: Pending</div>
                 </div>
-                <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
-                  <span className="inline-flex items-center gap-1">
-                    <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-400" /> 5
-                  </span>
-                  <span>•</span>
-                  <span>128 Reviews</span>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[0, 1, 2].map((i) => (
+                    <img
+                      key={i}
+                      src={mainThumbnail}
+                      alt="thumb"
+                      className="h-20 w-full object-cover rounded-lg"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
+                      }}
+                    />
+                  ))}
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  {isFlight ? (
-                    <>
-                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                        {data.guests} Passenger{data.guests > 1 ? 's' : ''}
+
+                <div className="flex items-start gap-3">
+                  <img
+                    src={mainThumbnail}
+                    alt={data.hotelName}
+                    className="h-16 w-16 rounded-lg object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = thumbnailFallback;
+                    }}
+                  />
+                  <div className="flex-1">
+                    <div className="font-semibold text-slate-900 leading-tight">{data.hotelName}</div>
+                    <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                      <span className="inline-flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-400" /> 5
                       </span>
-                      <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-                        Flight #{data.flightId}
-                      </span>
-                    </>
-                  ) : (
-                    <>
+                      <span>•</span>
+                      <span>128 Reviews</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                       <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
                         {data.checkIn}
                       </span>
@@ -767,15 +864,15 @@ export default function Checkout() {
                       <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">
                         {data.nights} Nights
                       </span>
-                    </>
-                  )}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-600 flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {data.city}, {data.country}
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-2 text-xs text-slate-600 flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {data.city}, {data.country}
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
             <dl className="mt-4 space-y-2 text-sm">
               <Row label="Booking fee" value={formatCurrency(bookingFee, intentState.currency)} />

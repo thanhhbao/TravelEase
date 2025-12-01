@@ -1,10 +1,12 @@
 // src/services/tickets.ts
 import { api } from "../lib/api"; 
+import { readTicketExtras } from "../utils/ticketExtras";
 /* ========= Types ========= */
 export interface Passenger {
-  name: string;
-  dateOfBirth: string;
-  passportNumber: string;
+   name: string;
+   dateOfBirth: string;
+   passportNumber: string;
+  seat?: string;
 }
 
 export interface Ticket {
@@ -18,6 +20,7 @@ export interface Ticket {
   status: "pending" | "confirmed" | "cancelled";
   created_at: string;
   guest_count?: number;
+  seat_ids?: string[];
   flight?: {
     id: number; // THÊM: Cần cho Link chi tiết chuyến bay
     airline: string;
@@ -111,13 +114,16 @@ export const ticketsService = {
         .filter((b: any) => b.flight_id)
         .map((b: any) => {
           const guests = Number(b.guests) || 0;
-          const passengers: Passenger[] = guests
-            ? Array.from({ length: guests }).map((_, idx) => ({
-                name: `Passenger ${idx + 1}`,
-                dateOfBirth: "",
-                passportNumber: "",
-              }))
-            : [];
+          const extras = readTicketExtras(b.id);
+          const passengers: Passenger[] =
+            (extras?.passengers as Passenger[] | undefined) ??
+            (guests
+              ? Array.from({ length: guests }).map((_, idx) => ({
+                  name: `Passenger ${idx + 1}`,
+                  dateOfBirth: "",
+                  passportNumber: "",
+                }))
+              : []);
 
           return {
             id: b.id,
@@ -130,6 +136,7 @@ export const ticketsService = {
             status: b.status ?? "pending",
             created_at: b.created_at ?? "",
             guest_count: guests || undefined,
+            seat_ids: extras?.seats,
             flight: b.flight
               ? {
                   id: b.flight.id,

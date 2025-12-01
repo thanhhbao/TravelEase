@@ -156,6 +156,7 @@ export default function FlightDetails() {
         city: `${flight!.from} → ${flight!.to}`,
         country: '',
         flightId: flight!.id,
+        seatIds: selectedSeats.map((s) => s.id),
       },
     });
   };

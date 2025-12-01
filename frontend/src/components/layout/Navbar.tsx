@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Menu, X, User, LogOut, Calendar, Plane, Home, Shield, Building2 } from "lucide-react";
 import { useAuthStore } from "../../store/auth";
@@ -7,6 +7,7 @@ import logoImage from '/public/images/logo.png';
 export default function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -28,6 +29,17 @@ export default function Navbar() {
     { name: "Hotels", href: "/hotels" },
     { name: "Services", href: "/services" },
   ];
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [isUserMenuOpen]);
 
   return (
     <nav className="bg-sky-50/90 backdrop-blur-md sticky top-0 z-50 border-b border-sky-100 shadow-lg">
@@ -80,10 +92,10 @@ export default function Navbar() {
           {/* Desktop Auth Section */}
           <div className="hidden md:flex items-center space-x-4">
             {isAuthenticated ? (
-              <div className="relative">
+              <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setIsUserMenuOpen((v) => !v)}
-                  className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 transition-colors duration-200"
+                  className="group flex items-center space-x-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-gray-700 shadow-sm transition-all duration-200 hover:shadow hover:-translate-y-[1px]"
                 >
                  <img
   src={avatarOf(user?.name, user?.avatar || undefined)}
@@ -98,59 +110,66 @@ export default function Navbar() {
                 </button>
 
                 {isUserMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-200 py-2 z-50">
-                    {user?.capabilities?.canAccessAdmin && (
-                      <Link
-                        to="/admin"
-                        className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <Shield className="h-4 w-4" />
-                        <span>Admin Panel</span>
-                      </Link>
-                    )}
-                    {(user?.roles?.includes("host") || user?.role === "host" || user?.capabilities?.canPostListings) && (
-                      <Link
-                        to="/host/workspace"
-                        className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
-                        onClick={() => setIsUserMenuOpen(false)}
-                      >
-                        <Building2 className="h-4 w-4" />
-                        <span>Host Workspace</span>
-                      </Link>
-                    )}
-                    <Link
-                      to="/my/profile"
-                      className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
-                      onClick={() => setIsUserMenuOpen(false)}
-                    >
-                      <User className="h-4 w-4" />
-                      <span>Profile</span>
-                    </Link>
-                    <Link
-                      to="/my/bookings"
-                      className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
-                      onClick={() => setIsUserMenuOpen(false)}
-                    >
-                      <Calendar className="h-4 w-4" />
-                      <span>My Bookings</span>
-                    </Link>
-                    <Link
-                      to="/my/tickets"
-                      className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
-                      onClick={() => setIsUserMenuOpen(false)}
-                    >
-                      <Plane className="h-4 w-4" />
-                      <span>My Tickets</span>
-                    </Link>
-                    <hr className="my-2" />
-                    <button
-                      onClick={handleLogout}
-                      className="flex items-center space-x-2 px-4 py-2 text-red-600 hover:bg-red-50 transition-colors duration-200 w-full text-left"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>Logout</span>
-                    </button>
+                  <div
+                    className="dropdown-panel absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl border border-gray-200 bg-white/95 shadow-2xl ring-1 ring-black/5 z-50"
+                    style={{ transformOrigin: "top right" }}
+                  >
+                    <div>
+                      <div className="py-2">
+                        {user?.capabilities?.canAccessAdmin && (
+                          <Link
+                            to="/admin"
+                            className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                            onClick={() => setIsUserMenuOpen(false)}
+                          >
+                            <Shield className="h-4 w-4" />
+                            <span>Admin Panel</span>
+                          </Link>
+                        )}
+                        {(user?.roles?.includes("host") || user?.role === "host" || user?.capabilities?.canPostListings) && (
+                          <Link
+                            to="/host/workspace"
+                            className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                            onClick={() => setIsUserMenuOpen(false)}
+                          >
+                            <Building2 className="h-4 w-4" />
+                            <span>Host Workspace</span>
+                          </Link>
+                        )}
+                        <Link
+                          to="/my/profile"
+                          className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <User className="h-4 w-4" />
+                          <span>Profile</span>
+                        </Link>
+                        <Link
+                          to="/my/bookings"
+                          className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <Calendar className="h-4 w-4" />
+                          <span>My Bookings</span>
+                        </Link>
+                        <Link
+                          to="/my/tickets"
+                          className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:bg-gray-50 transition-colors duration-200"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <Plane className="h-4 w-4" />
+                          <span>My Tickets</span>
+                        </Link>
+                        <hr className="my-2" />
+                        <button
+                          onClick={handleLogout}
+                          className="flex w-full items-center space-x-2 px-4 py-2 text-left text-red-600 transition-colors duration-200 hover:bg-red-50"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

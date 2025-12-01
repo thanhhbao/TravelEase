@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Calendar,
   Search,
@@ -9,6 +10,8 @@ import {
   CheckCircle,
   XCircle,
   MapPin,
+  Phone,
+  AlertTriangle,
   // Bỏ các icon liên quan đến Flight
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
@@ -82,6 +85,41 @@ const formatCurrency = (amount: number, currencyCode = 'USD') => {
   } catch (e) {
     return `${amount} ${currencyCode || 'USD'}`;
   }
+};
+
+const formatDate = (dateString?: string) => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+const formatTime = (dateString?: string) => {
+  if (!dateString) return 'N/A';
+  try {
+    return new Date(dateString).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return dateString;
+  }
+};
+
+const calculateNights = (checkIn?: string, checkOut?: string) => {
+  if (!checkIn || !checkOut) return null;
+  const start = new Date(checkIn);
+  const end = new Date(checkOut);
+  const diff = end.getTime() - start.getTime();
+  if (Number.isNaN(diff)) return null;
+  return Math.max(1, Math.round(diff / (1000 * 60 * 60 * 24)));
 };
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -189,19 +227,6 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
     (isNonEmptyString(hotel?.image) ? hotel?.image : undefined) ||
     '/placeholder-hotel.jpg';
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
   return (
     <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden hover:shadow-2xl transition-all duration-300">
       <div className="flex flex-col lg:flex-row">
@@ -268,12 +293,12 @@ const NewBookingCard = ({ booking, onCancel, onViewDetail }: BookingCardProps) =
           )}
 
           <div className="flex items-center justify-end gap-3">
-            {status !== 'cancelled' && (
+            {status === 'pending' && (
               <button
                 onClick={() => onCancel(booking.id)}
-                className="px-5 py-2 border border-rose-200 text-rose-600 rounded-full hover:bg-rose-50 transition-all duration-200 text-sm font-semibold"
+                className="px-5 py-2 border border-amber-200 text-amber-600 rounded-full hover:bg-amber-50 transition-all duration-200 text-sm font-semibold"
               >
-                Cancel
+                Cancel request
               </button>
             )}
             <button
@@ -361,6 +386,7 @@ export default function Bookings() {
           const room = normalizeRoomMedia(raw.room ?? fallbackRoom);
 
           const type = raw.type || (raw.hotel_id ? 'hotel' : raw.flight_id ? 'flight' : 'unknown');
+          const status = raw.status || 'pending';
           const currency = raw.currency || 'USD';
           const paymentStatus =
             raw.payment_status || (raw.stripe_payment_intent_id ? 'succeeded' : 'unpaid');
@@ -392,6 +418,7 @@ export default function Bookings() {
           return {
             ...raw,
             type,
+            status,
             currency,
             payment_status: paymentStatus,
             hotel,
@@ -675,91 +702,288 @@ export default function Bookings() {
         )}
       </div>
 
-      {/* Detail modal */}
+      <BookingDetailOverlay
+        detailState={detailState}
+        onClose={closeDetail}
+        onCancel={handleCancelBooking}
+      />
+    </div>
+  );
+}
+
+function BookingDetailOverlay({
+  detailState,
+  onClose,
+  onCancel,
+}: {
+  detailState: BookingDetailState;
+  onClose: () => void;
+  onCancel: (id: number) => void;
+}) {
+  const booking = detailState.booking;
+  const hotel = booking?.hotel;
+  const room = booking?.room;
+  const nights = calculateNights(booking?.check_in, booking?.check_out);
+  const statusIcon = booking ? getStatusIcon(booking.status) : null;
+  const statusColor = booking ? getStatusColor(booking.status) : 'bg-slate-100 text-slate-700 border-slate-200';
+  const [quickRating, setQuickRating] = useState<number | null>(null);
+  const [quickFeedback, setQuickFeedback] = useState('');
+
+  useEffect(() => {
+    setQuickRating(null);
+    setQuickFeedback('');
+  }, [booking?.id, detailState.open]);
+
+  const heroImage =
+    booking?.previewImage ||
+    room?.previewImage ||
+    room?.images?.[0] ||
+    hotel?.thumbnail ||
+    hotel?.images?.[0] ||
+    (isNonEmptyString(hotel?.image) ? hotel?.image : undefined) ||
+    '/placeholder-hotel.jpg';
+
+  return (
+    <AnimatePresence>
       {detailState.open && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-              <div>
-                <p className="text-xs text-slate-500">Booking detail</p>
-                <h3 className="text-xl font-bold text-slate-900">
-                  {detailState.booking ? `Booking #${detailState.booking.id}` : 'Loading...'}
-                </h3>
+        <motion.div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/40 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+          >
+            <div className="h-52 w-full overflow-hidden bg-slate-100 flex-shrink-0">
+              <SafeImage
+                src={heroImage}
+                alt={hotel?.name || 'Booking cover'}
+                className="h-full w-full object-cover"
+              />
+            </div>
+
+            <motion.div
+              className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full bg-white/95 px-3.5 py-2 text-sm font-semibold shadow-lg border border-slate-200/80"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                {statusIcon}
               </div>
+              <span className={`inline-flex items-center gap-1 ${statusColor}`}>
+                {booking?.status ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1) : '—'}
+              </span>
+            </motion.div>
+
+            <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow">
+              Booking #{booking?.id ?? '...'}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-24">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Hotel</p>
+                  <h3 className="text-2xl font-bold text-slate-900">{hotel?.name || 'Hotel booking'}</h3>
+                  <div className="text-sm text-slate-600">
+                    {hotel?.city} {hotel?.country ? `• ${hotel.country}` : ''}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500">Total amount</p>
+                  <div className="text-3xl font-bold text-sky-700">
+                    {booking
+                      ? formatCurrency(booking.total_price, booking.currency || 'USD')
+                      : '—'}
+                  </div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    {booking?.payment_status || 'unpaid'}
+                  </div>
+                </div>
+              </div>
+
+              {detailState.loading && (
+                <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+                  Loading booking details...
+                </div>
+              )}
+
+              {!detailState.loading && booking && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Chip label="Check-in" value={formatDate(booking.check_in)} />
+                    <Chip label="Check-out" value={formatDate(booking.check_out)} />
+                    <Chip
+                      label="Guests"
+                      value={`${booking.guests} guest${booking.guests > 1 ? 's' : ''}`}
+                    />
+                    <Chip label="Nights" value={nights ? `${nights} night${nights > 1 ? 's' : ''}` : '—'} />
+                    <Chip label="Payment" value={booking.payment_status || 'unpaid'} />
+                    <Chip label="Created" value={formatDate(booking.created_at)} />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Room</p>
+                          <h4 className="text-lg font-semibold text-slate-900">
+                            {room?.name || 'Room details'}
+                          </h4>
+                        </div>
+                        {room?.price_per_night && (
+                          <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700 border border-slate-200">
+                            ${room.price_per_night}/night
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-slate-600">
+                        {room?.beds ? `${room.beds} beds` : 'Comfortable space'} •
+                        &nbsp;Perfect for {booking.guests} guest{booking.guests > 1 ? 's' : ''}
+                      </div>
+                      {room?.images && room.images.length > 0 && (
+                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                          {room.images.slice(0, 6).map((img, idx) => (
+                            <SafeImage
+                              key={idx}
+                              src={img}
+                              alt={`Room preview ${idx + 1}`}
+                              className="h-20 w-28 flex-shrink-0 rounded-xl object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Reference</p>
+                        <p className="text-sm font-semibold text-slate-900">#{booking.id}</p>
+                        <p className="text-xs text-slate-500">Updated {formatDate(booking.updated_at)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Check-in time</p>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {formatTime(booking.check_in)} — {formatTime(booking.check_out)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                        Need changes? Use actions below to rebook or contact host.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 md:grid-cols-3">
+                    <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-white p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Quick review</p>
+                        {quickRating && (
+                          <span className="text-xs font-semibold text-emerald-600">Thanks for rating!</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((score) => (
+                          <button
+                            key={score}
+                            onClick={() => {
+                              setQuickRating(score);
+                              toast.success(`Rated ${score}/5 for Booking #${booking.id}`);
+                            }}
+                            className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
+                              quickRating && quickRating >= score
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-sky-200 hover:bg-sky-50'
+                            }`}
+                          >
+                            {score} ★
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        value={quickFeedback}
+                        onChange={(e) => setQuickFeedback(e.target.value)}
+                        placeholder="Share quick feedback with the host..."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                        rows={2}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => {
+                            toast.success('Feedback sent to host');
+                            setQuickFeedback('');
+                          }}
+                          className="rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow hover:shadow-md transition"
+                        >
+                          Send feedback
+                        </button>
+                        {hotel?.id && (
+                          <Link
+                            to={`/hotels/${hotel.id}#reviews`}
+                            className="rounded-xl border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50"
+                          >
+                            Go to full review
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Actions</p>
+                      <div className="space-y-3">
+                        <Link
+                          to={hotel?.id ? `/hotels/${hotel.id}` : '/hotels'}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow hover:shadow-md transition"
+                        >
+                          <Hotel className="h-4 w-4" />
+                          Rebook this stay
+                        </Link>
+                        <a
+                          href={`mailto:support@travelease.local?subject=Booking%20#${booking.id}%20-%20Question&body=Hi,%20I%20need%20help%20with%20booking%20#${booking.id}.`}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-50"
+                        >
+                          <Phone className="h-4 w-4" />
+                          Contact host
+                        </a>
+                        <a
+                          href={`mailto:support@travelease.local?subject=Booking%20#${booking.id}%20-%20Issue/Complaint&body=Hi,%20I%20had%20an%20issue%20with%20booking%20#${booking.id}%20(e.g.%20forgotten%20item,%20problem%20on%20site).`}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          Report issue / forgot item
+                        </a>
+                        {booking.status === 'pending' && (
+                          <button
+                            onClick={() => onCancel(booking.id)}
+                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Cancel request
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white via-white/90 to-white/30 px-6 pb-4 pt-6 flex items-center justify-end gap-3">
               <button
-                onClick={closeDetail}
-                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+                onClick={onClose}
+                className="rounded-full bg-white/90 px-4 py-2 text-sm font-semibold text-slate-800 shadow hover:bg-white border border-slate-200"
               >
                 Close
               </button>
             </div>
-
-            {detailState.loading && (
-              <div className="p-6 text-center text-slate-600">Loading booking details...</div>
-            )}
-
-            {!detailState.loading && detailState.booking && (
-              <div className="p-6 space-y-4">
-                <div className="flex flex-col md:flex-row md:items-start md:gap-6">
-                  <div className="flex-1 space-y-2">
-                    <p className="text-sm text-slate-500">Status</p>
-                    <div className="text-lg font-semibold text-slate-900 capitalize">
-                      {detailState.booking.status}
-                    </div>
-                    <p className="text-sm text-slate-500">Payment</p>
-                    <div className="text-base text-slate-900">
-                      {detailState.booking.payment_status || 'unpaid'}
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <p className="text-sm text-slate-500">Total</p>
-                    <div className="text-xl font-bold text-slate-900">
-                      {formatCurrency(
-                        detailState.booking.total_price,
-                        detailState.booking.currency || 'USD',
-                      )}
-                    </div>
-                    <p className="text-sm text-slate-500">Guests</p>
-                    <div className="text-base text-slate-900">{detailState.booking.guests}</div>
-                  </div>
-                </div>
-
-                {detailState.booking.hotel && (
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <h4 className="font-semibold text-slate-900 mb-2">Hotel</h4>
-                    <p className="text-slate-800">{detailState.booking.hotel.name}</p>
-                    <p className="text-slate-500 text-sm">
-                      {detailState.booking.hotel.city} {detailState.booking.hotel.country}
-                    </p>
-                    <div className="text-sm text-slate-600 mt-2">
-                      {formatDate(detailState.booking.check_in)} →{' '}
-                      {formatDate(detailState.booking.check_out)}
-                    </div>
-                  </div>
-                )}
-
-                {detailState.booking.flight && (
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <h4 className="font-semibold text-slate-900 mb-2">Flight</h4>
-                    <p className="text-slate-800">
-                      {detailState.booking.flight.airline} — {detailState.booking.flight.flight_number}
-                    </p>
-                    <p className="text-slate-600 text-sm">
-                      {detailState.booking.flight.departure_city} →{' '}
-                      {detailState.booking.flight.arrival_city}
-                    </p>
-                    <div className="text-sm text-slate-600 mt-2">
-                      {formatDate(detailState.booking.flight.departure_time)} &nbsp;•&nbsp;
-                      {formatTime(detailState.booking.flight.departure_time)}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
-    </div>
+    </AnimatePresence>
   );
 }
 
